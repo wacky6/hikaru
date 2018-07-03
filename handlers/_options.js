@@ -2,15 +2,13 @@
 
 module.exports = {
     global: yargs => yargs
-        .option('C', {
-            alias: 'config',
-            demandOption: true,
-            describe: 'hikaru configuration file',
-            type: 'string',
-            default: '~/.hikaru/hikaru.rc.conf'
-        })
     ,
     output: yargs => yargs
+        .option('O', {
+            alias: 'output-dir',
+            describe: 'output directory',
+            default: '~/hikaru/',
+        })
         .option('o', {
             alias: 'output',
             describe: 'output file pattern, use - for stdout',

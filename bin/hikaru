@@ -1,15 +1,11 @@
 #!/usr/bin/env node
 
-const ADD = require('../handlers/add')
 const RUN = require('../handlers/run')
-const CRONTAB = require('../handlers/crontab')
-const INSTALL = require('../handlers/install')
+const DAEMON = require('../handlers/daemon')
 
 require('yargs')
     .usage('$0 <cmd> [options] [args]')
-    .command('add <room_id>', 'Add idol', ADD.yargs, ADD.handler)
-    .command('crontab', 'Run crontab task', CRONTAB.yargs, CRONTAB.handler)
-    .command('run <room_id>', 'Watch idol live', RUN.yargs, RUN.handler)
-    .command('install', 'Install to crontab', INSTALL.yargs, INSTALL.handler)
+    .command('run <room_id>', 'Capture live', RUN.yargs, RUN.handler)
+    .command('daemon <room_id>', 'Monitor idol', DAEMON.yargs, DAEMON.handler)
     .argv
 

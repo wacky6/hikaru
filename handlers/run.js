@@ -1,6 +1,5 @@
 const { global: injectGlobalOptions, output: injectOutputOptions } = require('./_options')
 const { parseRoom } = require('../lib/parser')
-const { readConfig, writeConfig } = require('../lib/config')
 const { getRoomInfo, getRoomUser, getPlayUrls } = require('../lib/bili-api')
 const { spawn } = require('child_process')
 const { createWriteStream, resolvePath } = require('../lib/fs')
@@ -20,14 +19,15 @@ async function downloadStream(url, outputPath) {
         const child = spawn('curl', args, stdio = ['ignore', 'pipe', 'pipe'])
 
         child.once('exit', (code) => {
+            console.error('')
             console.error(`curl exits with: ${code}`)
+            console.error('')
             resolve(code)
         })
 
         child.stdout.pipe(stream)
         child.stderr.pipe(process.stderr)
 
-        // TODO: add a progress / bandwidth indicator
         // TODO: add email notification
     })
 }
@@ -36,22 +36,7 @@ async function captureLive({
     outputPath,
     canonicalRoomId
 }) {
-    const {
-        quality,
-        urls,
-    } = await getPlayUrls(canonicalRoomId)
 
-    if (urls.length === 0) {
-        throw new Error('Stream list is empty')
-    }
-
-    console.error(`☑️  视频流捕获 Qual.${quality}：`)
-    urls.forEach(entry => console.error(`    ${entry.url}`))
-
-    console.error(`🌟  点亮爱豆……`)
-    console.error(`    ${outputPath}`)
-    console.error('')
-    return await downloadStream(urls[0].url, outputPath)
 }
 
 module.exports = {
@@ -64,17 +49,11 @@ module.exports = {
     ,
     handler: async argv => {
         const {
-            outputDir: _output_dir,
-            output: _output,
-            config: _config,
-            room_id
+            outputDir,
+            output,
+            room_id,
+            daemon = false
         } = argv
-
-        const config = await readConfig(_config)
-
-        // build args
-        const outputDir = _output_dir || config.output_dir
-        const output = _output || config.output
 
         try {
             // get idol information
@@ -107,13 +86,26 @@ module.exports = {
                     })
                 )
 
-            const code = await captureLive({
-                outputPath,
-                canonicalRoomId,
-            })
+            const {
+                quality,
+                urls,
+            } = await getPlayUrls(canonicalRoomId)
 
-            // blow up host system is exit code is non-success
-            if (code) {
+            if (urls.length === 0) {
+                throw new Error('Stream list is empty')
+            }
+
+            console.error(`☑️  视频流捕获 Qual.${quality}：`)
+            urls.forEach(entry => console.error(`    ${entry.url}`))
+
+            console.error(`🌟  点亮爱豆……`)
+            console.error(`    ${outputPath}`)
+            console.error('')
+
+            const code = await downloadStream(urls[0].url, outputPath)
+
+            // blow self up if necessary
+            if (!daemon && code) {
                 process.exit(code)
             }
         } catch(e) {

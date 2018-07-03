@@ -4,14 +4,19 @@ Never miss a single Bili-Live again! 🌟
 
 ![hikaru](./icon.png)
 
+## Docker Usage
+```shell
+docker pull wacky6/hikaru
+docker run -v <local_dir>:/hikaru/ wacky6/hikaru daemon -O /hikaru/ <room_id>
+```
+
 ## Usage
-* curl is a hard dependency, it must be located in `$PATH`
 * must be macOS or Linux.
+* curl is a hard dependency, it must be located in `$PATH`
 
 ```shell
-hikaru add <room_id>      # add idol to crontab
-hikaru crontab            # check live idol's status
-hikaru run <room_id>      # make idol shine!
+hikaru run <room_id>      # capture live
+hikaru daemon <room_id>   # make idol shine!
 ```
 
 ## LICENSE
