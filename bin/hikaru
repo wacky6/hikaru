@@ -1,0 +1,15 @@
+#!/usr/bin/env node
+
+const ADD = require('../handlers/add')
+const RUN = require('../handlers/run')
+const CRONTAB = require('../handlers/crontab')
+const INSTALL = require('../handlers/install')
+
+require('yargs')
+    .usage('$0 <cmd> [options] [args]')
+    .command('add <room_id>', 'Add idol', ADD.yargs, ADD.handler)
+    .command('crontab', 'Run crontab task', CRONTAB.yargs, CRONTAB.handler)
+    .command('run <room_id>', 'Watch idol live', RUN.yargs, RUN.handler)
+    .command('install', 'Install to crontab', INSTALL.yargs, INSTALL.handler)
+    .argv
+

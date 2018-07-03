@@ -2,5 +2,5 @@ node_modules
 .DS_Store
 *.log
 *.tmp
-.hikaru.rc.json
+hikaru.rc.json
 

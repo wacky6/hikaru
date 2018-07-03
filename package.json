@@ -5,13 +5,20 @@
   "bin": {
     "hikaru": "bin/hikaru"
   },
-  "main": "index.js",
+  "scripts": {
+    "test": "tape test/*.js"
+  },
   "repository": "https://github.com/wacky6/hikaru/",
   "author": "Jiewei Qian <qjw@wacky.one>",
-  "license": "GPL-v3",
+  "license": "GPL-3.0",
   "dependencies": {
+    "dateformat": "^3.0.3",
+    "mkdirp": "^0.5.1",
     "superagent": "^3.8.3",
     "winston": "^3.0.0",
     "yargs": "^12.0.1"
+  },
+  "devDependencies": {
+    "tape": "^4.9.1"
   }
 }
