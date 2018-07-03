@@ -51,7 +51,7 @@ async function captureLive({
     console.error(`🌟  点亮爱豆……`)
     console.error(`    ${outputPath}`)
     console.error('')
-    await downloadStream(urls[0].url, outputPath)
+    return await downloadStream(urls[0].url, outputPath)
 }
 
 module.exports = {
@@ -107,10 +107,15 @@ module.exports = {
                     })
                 )
 
-            await captureLive({
+            const code = await captureLive({
                 outputPath,
                 canonicalRoomId,
             })
+
+            // blow up host system is exit code is non-success
+            if (code) {
+                process.exit(code)
+            }
         } catch(e) {
             console.error(e.stack)
         }
