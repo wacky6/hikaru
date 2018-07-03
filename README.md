@@ -7,7 +7,7 @@ Never miss a single Bili-Live again! 🌟
 ## Docker Usage
 ```shell
 docker pull wacky6/hikaru
-docker run -v <local_dir>:/hikaru/ wacky6/hikaru daemon -O /hikaru/ <room_id>
+docker run -v <local_dir>:/root/hikaru/ wacky6/hikaru daemon <room_id>
 ```
 
 ## Usage
