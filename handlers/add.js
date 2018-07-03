@@ -29,7 +29,7 @@ module.exports = {
                 name,
                 uid,
             } = await getRoomUser(canonicalRoomId)
-            console.log(`⭐️  捕获爱豆 ${name} (${uid}) / ${title} (${canonicalRoomId})`)
+            console.error(`⭐️  捕获爱豆 ${name} (${uid}) / ${title} (${canonicalRoomId})`)
 
             // TODO: ask for confirmation
 
@@ -50,7 +50,7 @@ module.exports = {
             }
 
             await writeConfig(_config, newConfig)
-            console.log(`✨  ${name} 已加入列表`)
+            console.error(`✨  ${name} 已加入列表`)
         } catch(e) {
             console.error(e.stack)
         }

@@ -14,18 +14,18 @@ async function downloadStream(url, outputPath) {
         url,
     ]
 
-    const stream = createWriteStream(outputPath)
+    const stream = outputPath === '-' ? process.stdout : createWriteStream(outputPath)
 
     return new Promise(resolve => {
         const child = spawn('curl', args, stdio = ['ignore', 'pipe', 'pipe'])
 
         child.once('exit', (code) => {
-            console.log(`curl exits with: ${code}`)
+            console.error(`curl exits with: ${code}`)
             resolve(code)
         })
 
         child.stdout.pipe(stream)
-        child.stderr.pipe(process.stdout)
+        child.stderr.pipe(process.stderr)
 
         // TODO: add a progress / bandwidth indicator
         // TODO: add email notification
@@ -45,12 +45,12 @@ async function captureLive({
         throw new Error('Stream list is empty')
     }
 
-    console.log(`☑️  视频流捕获 Qual.${quality}：`)
-    urls.forEach(entry => console.log(`    ${entry.url}`))
+    console.error(`☑️  视频流捕获 Qual.${quality}：`)
+    urls.forEach(entry => console.error(`    ${entry.url}`))
 
-    console.log(`🌟  点亮爱豆……`)
-    console.log(`    ${outputPath}`)
-    console.log('')
+    console.error(`🌟  点亮爱豆……`)
+    console.error(`    ${outputPath}`)
+    console.error('')
     await downloadStream(urls[0].url, outputPath)
 }
 
@@ -89,21 +89,23 @@ module.exports = {
             } = await getRoomUser(canonicalRoomId)
 
             if (liveStatus !== 1) {
-                console.log(`⭐️  ${name} 不在直播 ${liveStatus}`)
+                console.error(`⭐️  ${name} 不在直播 ${liveStatus}`)
                 return
             }
 
-            console.log(`⭐️  ${name} 直播中 ${liveStartsAt}`)
+            console.error(`⭐️  ${name} 直播中 ${liveStartsAt}`)
 
-            const outputPath = resolvePath(
-                outputDir,
-                expandTemplate(output, {
-                    idol: name,
-                    date: dateformat(new Date(), 'yyyy-mm-dd'),
-                    time: Date.now(),
-                    ext: 'flv',
-                })
-            )
+            const outputPath = output === '-'
+                ? '-'
+                : resolvePath(
+                    outputDir,
+                    expandTemplate(output, {
+                        idol: name,
+                        date: dateformat(new Date(), 'yyyy-mm-dd'),
+                        time: Date.now(),
+                        ext: 'flv',
+                    })
+                )
 
             await captureLive({
                 outputPath,

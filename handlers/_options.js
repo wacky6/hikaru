@@ -13,7 +13,7 @@ module.exports = {
     output: yargs => yargs
         .option('o', {
             alias: 'output',
-            describe: 'output file pattern',
+            describe: 'output file pattern, use - for stdout',
             default: '@idol_@date_@time.@ext'
         })
 }
