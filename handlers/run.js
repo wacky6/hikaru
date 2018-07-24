@@ -5,6 +5,8 @@ const { spawn } = require('child_process')
 const { createWriteStream, resolvePath } = require('../lib/fs')
 const expandTemplate = require('../lib/string-template')
 const dateformat = require('dateformat')
+const { resolve: resolveUrl } = require('url')
+const { sendMessage } = require('../lib/telegram-api')
 
 async function downloadStream(url, outputPath) {
     const args = [
@@ -27,16 +29,7 @@ async function downloadStream(url, outputPath) {
 
         child.stdout.pipe(stream)
         child.stderr.pipe(process.stderr)
-
-        // TODO: add email notification
     })
-}
-
-async function captureLive({
-    outputPath,
-    canonicalRoomId
-}) {
-
 }
 
 module.exports = {
@@ -47,12 +40,20 @@ module.exports = {
             type: 'string'
         })
     ,
+
+    /*
+     * throw if bilibili API fails
+     * return `undefined` if host is not live
+     * return `0` if capture is successful (curl exits 0)
+     * return non-zero (curl exit code) if capture fails (network / obs crash / etc)
+     */
     handler: async argv => {
         const {
             outputDir,
             output,
             room_id,
-            daemon = false
+            daemon = false,
+            telegram = null,
         } = argv
 
         try {
@@ -73,6 +74,20 @@ module.exports = {
             }
 
             console.error(`⭐️  ${name} 直播中 ${liveStartsAt}`)
+            if (telegram) {
+                const botApi = resolveUrl(argv.telegramEndpoint, `/bot${telegram.token}`)
+                // telegram notification is asynchronous, do not block recording
+                sendMessage(botApi, {
+                    chat_id: telegram.chatId,
+                    parse_mode: 'HTML',
+                    text: `🌟hikaru: <a href="https://live.bilibili.com/${canonicalRoomId}">${name} (${canonicalRoomId})</a> 开始直播啦，快去让 TA 发光吧！`,
+                    disable_notification: false,
+                    disable_web_page_preview: true,
+                }).then(
+                    success => console.error(`✉️  Telegram 消息已投递`),
+                    error => console.error(`✉️  Telegram 消息投递失败：${error.message}`)
+                )
+            }
 
             const outputPath = output === '-'
                 ? '-'
@@ -108,6 +123,9 @@ module.exports = {
             if (!daemon && code) {
                 process.exit(code)
             }
+
+            // return curl exit code, 0 for normal exit, non-0 for failure
+            return code
         } catch(e) {
             console.error(e.stack)
         }
