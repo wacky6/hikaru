@@ -114,6 +114,7 @@ module.exports = {
             urls.forEach(entry => console.error(`    ${entry.url}`))
 
             console.error(`🌟  点亮爱豆……`)
+            console.error(`    开始发光：${dateformat(new Date(), 'yyyy-mm-dd HH:MM:ss')}`)
             console.error(`    ${outputPath}`)
             console.error('')
 
