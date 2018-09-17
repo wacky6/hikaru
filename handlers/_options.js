@@ -33,4 +33,10 @@ module.exports = {
             type: 'string',
             default: 'https://api.telegram.org'
         })
+        .option('s', {
+            alias: 'silent',
+            describe: 'deliver notification silently',
+            type: 'boolean',
+            default: false
+        })
 }
