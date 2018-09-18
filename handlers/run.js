@@ -15,7 +15,7 @@ async function downloadStream(url, outputPath) {
         '-y',    // speed time, used to kill stagnated stream
         '10',    //     10s
         '-Y',    // speed limit, used to detect stagnated stream
-        '50000', //     50 kB/s
+        '10000', //     10 kB/s, estimated from basic audio stream bitrate (~128kbps -> 16kB/s)
         url,
     ]
 
