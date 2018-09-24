@@ -6,12 +6,16 @@ const { createWriteStream, resolvePath } = require('../lib/fs')
 const expandTemplate = require('../lib/string-template')
 const dateformat = require('dateformat')
 const { resolve: resolveUrl } = require('url')
-const { sendMessage } = require('../lib/telegram-api')
+const { sendMessage, editMessageText } = require('../lib/telegram-api')
 
 async function downloadStream(url, outputPath) {
     const args = [
         '-L',    // follow redirect
         '-S',    // print error
+        '-y',    // speed time, used to kill stagnated stream
+        '10',    //     10s
+        '-Y',    // speed limit, used to detect stagnated stream
+        '10000', //     10 kB/s, estimated from basic audio stream bitrate (~128kbps -> 16kB/s)
         url,
     ]
 
@@ -32,6 +36,60 @@ async function downloadStream(url, outputPath) {
     })
 }
 
+async function sendNotification(tgOpts, messageArgs) {
+    const {
+        telegramEndpoint,
+        telegram: {
+            token,
+            chatId
+        } = {},
+        silent,
+    } = tgOpts || {}
+
+    if (token && chatId) {
+        const botApi = resolveUrl(telegramEndpoint, `/bot${token}`)
+
+        try {
+            const {
+                messageId
+            } = await sendMessage(botApi, {
+                chat_id: chatId,
+                disable_notification: silent,
+                disable_web_page_preview: true,
+                ...messageArgs
+            })
+            console.error(`✉️  Telegram 消息已投递`)
+
+            return {
+                editMessageText: args => editMessageText(botApi, {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    disable_notification: true,
+                    disable_web_page_preview: true,
+                    ...args
+                }).then(
+                    success => console.error(`✉️  Telegram 消息已更新`),
+                    error => console.error(`✉️  Telegram 消息更新失败：${error.message}`)
+                )
+            }
+        } catch(error) {
+            console.error(`✉️  Telegram 消息投递失败：${error.message}`)
+            return {
+                editMessageText: Promise.resolve(null)
+            }
+        }
+    } else {
+        return {
+            editMessageText: Promise.resolve(null)
+        }
+    }
+}
+
+function formatTimeDuration(secs) {
+    const date = new Date(secs)
+    return dateformat(date, 'UTC:HH:MM:ss')
+}
+
 module.exports = {
     yargs: yargs => injectOutputOptions(injectGlobalOptions(yargs))
         .usage('$0 run <room_id>')
@@ -42,19 +100,22 @@ module.exports = {
     ,
 
     /*
-     * throw if bilibili API fails
-     * return `undefined` if host is not live
-     * return `0` if capture is successful (curl exits 0)
-     * return non-zero (curl exit code) if capture fails (network / obs crash / etc)
+     * throws if bili-api become ridiculous (changed)
+     * return 0 if success
+     * return non-zero if error
      */
     handler: async argv => {
         const {
             outputDir,
             output,
             room_id,
+            telegramEndpoint,
             daemon = false,
             telegram = null,
+            silent = false
         } = argv
+
+        const telegramOpts = { telegramEndpoint, telegram, silent }
 
         try {
             // get idol information
@@ -70,65 +131,88 @@ module.exports = {
 
             if (liveStatus !== 1) {
                 console.error(`⭐️  ${name} 不在直播 ${liveStatus}`)
-                return
+                return 0
             }
 
             console.error(`⭐️  ${name} 直播中 ${liveStartsAt}`)
-            if (telegram) {
-                const botApi = resolveUrl(argv.telegramEndpoint, `/bot${telegram.token}`)
-                // telegram notification is asynchronous, do not block recording
-                sendMessage(botApi, {
-                    chat_id: telegram.chatId,
-                    parse_mode: 'HTML',
-                    text: `🌟hikaru: <a href="https://live.bilibili.com/${canonicalRoomId}">${name} (${canonicalRoomId})</a> 开始直播啦，快去让 TA 发光吧！`,
-                    disable_notification: false,
-                    disable_web_page_preview: true,
-                }).then(
-                    success => console.error(`✉️  Telegram 消息已投递`),
-                    error => console.error(`✉️  Telegram 消息投递失败：${error.message}`)
-                )
-            }
 
-            const outputPath = output === '-'
-                ? '-'
-                : resolvePath(
-                    outputDir,
-                    expandTemplate(output, {
-                        idol: name,
-                        date: dateformat(new Date(), 'yyyy-mm-dd'),
-                        time: Date.now(),
-                        ext: 'flv',
+            // send message asynchronously, do not block
+            const notificationPromise = sendNotification(telegramOpts, {
+                parse_mode: 'HTML',
+                text: `🌟hikaru: <a href="https://live.bilibili.com/${canonicalRoomId}">${name} (${canonicalRoomId})</a> 开始直播啦，快去让 TA 发光吧！`,
+            })
+
+            // keep going until liveStatus changes to NOT_LIVE (1)
+            // this is to deal with minor streaming disruptions (i.e. CDN network congestion)
+            // NOTE: warn that template should contain a counter (i.e. time), or previous one will be overwritten
+            const captureStartsAt = Date.now()
+
+            while (true) {
+                const outputPath = output === '-'
+                    ? '-'
+                    : resolvePath(
+                        outputDir,
+                        expandTemplate(output, {
+                            idol: name,
+                            date: dateformat(new Date(), 'yyyy-mm-dd'),
+                            time: Date.now(),
+                            ext: 'flv',
+                        })
+                    )
+
+                const {
+                    quality,
+                    urls,
+                } = await getPlayUrls(canonicalRoomId)
+
+                if (urls.length === 0) {
+                    throw new Error('Stream list is empty')
+                }
+
+                console.error(`☑️  视频流捕获 Qual.${quality}：`)
+                urls.forEach(entry => console.error(`    ${entry.url}`))
+
+                console.error(`🌟  点亮爱豆……`)
+                console.error(`    开始发光：${dateformat(new Date(), 'yyyy-mm-dd HH:MM:ss')}`)
+                console.error(`    ${outputPath}`)
+                console.error('')
+
+                const code = await downloadStream(urls[0].url, outputPath)
+
+                // blow self up if necessary, when curl fails
+                if (!daemon && code) {
+                    process.exit(code)
+                }
+
+                const {
+                    liveStatus: postCaptureLiveStatus,
+                } = await getRoomInfo(inputRoomId)
+
+                if (postCaptureLiveStatus !== 1) {
+                    console.error(`⭐️  ${name} 直播结束 ${liveStatus}`)
+
+                    // compute statistics
+                    const capturedDuration = Date.now() - captureStartsAt
+                    // TODO: add stat about actual capture time, disruption count, etc.
+
+                    // update telegram notification asynchronously, do not block
+                    notificationPromise.then(notification => {
+                        notification.editMessageText({
+                            parse_mode: 'HTML',
+                            text: `🌟hikaru: <a href="https://live.bilibili.com/${canonicalRoomId}">${name} (${canonicalRoomId})</a> 直播结束，开始于 ${liveStartsAt} (CST)；已捕获时长 ${formatTimeDuration(capturedDuration)}`,
+                            disable_notification: true,
+                            disable_web_page_preview: true,
+                        })
                     })
-                )
-
-            const {
-                quality,
-                urls,
-            } = await getPlayUrls(canonicalRoomId)
-
-            if (urls.length === 0) {
-                throw new Error('Stream list is empty')
+                    return 0
+                }
             }
-
-            console.error(`☑️  视频流捕获 Qual.${quality}：`)
-            urls.forEach(entry => console.error(`    ${entry.url}`))
-
-            console.error(`🌟  点亮爱豆……`)
-            console.error(`    开始发光：${dateformat(new Date(), 'yyyy-mm-dd HH:MM:ss')}`)
-            console.error(`    ${outputPath}`)
-            console.error('')
-
-            const code = await downloadStream(urls[0].url, outputPath)
-
-            // blow self up if necessary
-            if (!daemon && code) {
-                process.exit(code)
-            }
-
-            // return curl exit code, 0 for normal exit, non-0 for failure
-            return code
         } catch(e) {
             console.error(e.stack)
+            return 2
         }
-    }
+    },
+
+    // expose sendNotification method for testing
+    sendNotification
 }
