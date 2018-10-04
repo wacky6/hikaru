@@ -2,11 +2,16 @@ const { global: injectGlobalOptions, output: injectOutputOptions } = require('./
 const { parseRoom } = require('../lib/parser')
 const { getRoomInfo, getRoomUser, getPlayUrls } = require('../lib/bili-api')
 const { spawn } = require('child_process')
-const { createWriteStream, resolvePath } = require('../lib/fs')
+const { createWriteStream, resolvePath, getFileSize } = require('../lib/fs')
+const { unlink } = require('fs')
 const expandTemplate = require('../lib/string-template')
 const dateformat = require('dateformat')
 const { resolve: resolveUrl } = require('url')
 const { sendMessage, editMessageText } = require('../lib/telegram-api')
+
+// used to catch empty stream caused by liveStatus update lag
+// output files < this threshold is considered to be empty
+const BLANK_STREAM_FILE_SIZE_THRESHOLD = 1024
 
 async function downloadStream(url, outputPath) {
     const args = [
@@ -178,6 +183,12 @@ module.exports = {
                 console.error('')
 
                 const code = await downloadStream(urls[0].url, outputPath)
+
+                // nuke blank stream
+                const fileSize = getFileSize(outputPath)
+                if (fileSize < BLANK_STREAM_FILE_SIZE_THRESHOLD) {
+                    unlink(outputPath, err => err || console.error(`😈  删除空的视频流：${outputPath}`))
+                }
 
                 // blow self up if necessary, when curl fails
                 if (!daemon && code) {
