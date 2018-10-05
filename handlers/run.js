@@ -129,6 +129,7 @@ module.exports = {
                 roomId: canonicalRoomId,
                 liveStatus,
                 liveStartsAt,
+                title,
             } = await getRoomInfo(inputRoomId)
             const {
                 name
@@ -144,7 +145,7 @@ module.exports = {
             // send message asynchronously, do not block
             const notificationPromise = sendNotification(telegramOpts, {
                 parse_mode: 'HTML',
-                text: `🌟hikaru: <a href="https://live.bilibili.com/${canonicalRoomId}">${name} (${canonicalRoomId})</a> 开始直播啦，快去让 TA 发光吧！`,
+                text: `🌟hikaru: <a href="https://live.bilibili.com/${canonicalRoomId}">${name} (${canonicalRoomId})</a> 开始直播「${title}」啦，快去让 TA 发光吧！`,
             })
 
             // keep going until liveStatus changes to NOT_LIVE (1)
@@ -197,6 +198,7 @@ module.exports = {
 
                 const {
                     liveStatus: postCaptureLiveStatus,
+                    title: postCaptureTitle,
                 } = await getRoomInfo(inputRoomId)
 
                 if (postCaptureLiveStatus !== 1) {
@@ -210,7 +212,7 @@ module.exports = {
                     notificationPromise.then(notification => {
                         notification.editMessageText({
                             parse_mode: 'HTML',
-                            text: `🌟hikaru: <a href="https://live.bilibili.com/${canonicalRoomId}">${name} (${canonicalRoomId})</a> 直播结束，开始于 ${liveStartsAt} (CST)；已捕获时长 ${formatTimeDuration(capturedDuration)}`,
+                            text: `🌟hikaru: <a href="https://live.bilibili.com/${canonicalRoomId}">${name} (${canonicalRoomId})</a> 直播「${postCaptureTitle}」结束，已捕获 ${formatTimeDuration(capturedDuration)}。`,
                             disable_notification: true,
                             disable_web_page_preview: true,
                         })
