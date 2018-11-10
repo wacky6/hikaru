@@ -186,7 +186,7 @@ module.exports = {
                 const code = await downloadStream(urls[0].url, outputPath)
 
                 // nuke blank stream
-                const fileSize = getFileSize(outputPath)
+                const fileSize = await getFileSize(outputPath)
                 if (fileSize < BLANK_STREAM_FILE_SIZE_THRESHOLD) {
                     unlink(outputPath, err => err || console.error(`😈  删除空的视频流：${outputPath}`))
                 }
