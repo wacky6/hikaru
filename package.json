@@ -5,6 +5,7 @@
   "bin": {
     "hikaru": "bin/hikaru"
   },
+  "main": "exports.js",
   "scripts": {
     "test": "tape test/*.js"
   },
