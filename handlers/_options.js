@@ -18,6 +18,12 @@ module.exports = {
             describe: 'output file pattern, use - for stdout',
             default: '@idol_@date_@time.@ext'
         })
+        .option('C', {
+            alias: 'no-capture',
+            describe: 'do not capture stream. useful for notification-only deployment',
+            type: 'boolean',
+            default: false
+        })
     ,
     telegram: yargs => yargs
         .option('t', {

@@ -9,9 +9,14 @@ const dateformat = require('dateformat')
 const { resolve: resolveUrl } = require('url')
 const { sendMessage, editMessageText } = require('../lib/telegram-api')
 
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+
 // used to catch empty stream caused by liveStatus update lag
 // output files < this threshold is considered to be empty
 const BLANK_STREAM_FILE_SIZE_THRESHOLD = 1024
+
+// interval between live status checks, in milliseconds
+const LIVE_STATUS_CHECK_INTERVAL = 60 * 1000
 
 async function downloadStream(url, outputPath) {
     const args = [
@@ -44,12 +49,14 @@ async function downloadStream(url, outputPath) {
 async function sendNotification(tgOpts, messageArgs) {
     const {
         telegramEndpoint,
-        telegram: {
-            token,
-            chatId
-        } = {},
-        silent,
+        telegram,
+        silent
     } = tgOpts || {}
+
+    const {
+        token,
+        chatId
+    } = telegram || {}
 
     if (token && chatId) {
         const botApi = resolveUrl(telegramEndpoint, `/bot${token}`)
@@ -95,6 +102,49 @@ function formatTimeDuration(secs) {
     return dateformat(date, 'UTC:HH:MM:ss')
 }
 
+function getOutputPath(output, outputDir, opts = {}) {
+    return (
+        output === '-'
+            ? '-'
+            : resolvePath(
+                outputDir,
+                expandTemplate(output, {
+                    ... opts,
+                    date: dateformat(new Date(), 'yyyy-mm-dd'),
+                    time: Date.now(),
+                    ext: 'flv',
+                })
+            )
+    )
+}
+
+async function captureStream(outputPath, canonicalRoomId) {
+    const {
+        quality,
+        urls,
+    } = await getPlayUrls(canonicalRoomId)
+
+    if (urls.length === 0) {
+        throw new Error('Stream list is empty')
+    }
+
+    console.error(`☑️  视频流捕获 Qual.${quality}：`)
+    urls.forEach(entry => console.error(`    ${entry.url}`))
+
+    console.error(`🌟  点亮爱豆……`)
+    console.error(`    开始发光：${dateformat(new Date(), 'yyyy-mm-dd HH:MM:ss')}`)
+    console.error(`    ${outputPath}`)
+    console.error('')
+
+    await downloadStream(urls[0].url, outputPath)
+
+    // nuke blank stream
+    const fileSize = await getFileSize(outputPath)
+    if (fileSize < BLANK_STREAM_FILE_SIZE_THRESHOLD) {
+        unlink(outputPath, err => err || console.error(`😈  删除空的视频流：${outputPath}`))
+    }
+}
+
 module.exports = {
     yargs: yargs => injectOutputOptions(injectGlobalOptions(yargs))
         .usage('$0 run <room_id>')
@@ -115,9 +165,9 @@ module.exports = {
             output,
             room_id,
             telegramEndpoint,
-            daemon = false,
             telegram = null,
-            silent = false
+            silent = false,
+            noCapture = false
         } = argv
 
         const telegramOpts = { telegramEndpoint, telegram, silent }
@@ -154,46 +204,13 @@ module.exports = {
             const captureStartsAt = Date.now()
 
             while (true) {
-                const outputPath = output === '-'
-                    ? '-'
-                    : resolvePath(
-                        outputDir,
-                        expandTemplate(output, {
-                            idol: name,
-                            date: dateformat(new Date(), 'yyyy-mm-dd'),
-                            time: Date.now(),
-                            ext: 'flv',
-                        })
-                    )
-
-                const {
-                    quality,
-                    urls,
-                } = await getPlayUrls(canonicalRoomId)
-
-                if (urls.length === 0) {
-                    throw new Error('Stream list is empty')
-                }
-
-                console.error(`☑️  视频流捕获 Qual.${quality}：`)
-                urls.forEach(entry => console.error(`    ${entry.url}`))
-
-                console.error(`🌟  点亮爱豆……`)
-                console.error(`    开始发光：${dateformat(new Date(), 'yyyy-mm-dd HH:MM:ss')}`)
-                console.error(`    ${outputPath}`)
-                console.error('')
-
-                const code = await downloadStream(urls[0].url, outputPath)
-
-                // nuke blank stream
-                const fileSize = await getFileSize(outputPath)
-                if (fileSize < BLANK_STREAM_FILE_SIZE_THRESHOLD) {
-                    unlink(outputPath, err => err || console.error(`😈  删除空的视频流：${outputPath}`))
-                }
-
-                // blow self up if necessary, when curl fails
-                if (!daemon && code) {
-                    process.exit(code)
+                if (noCapture) {
+                    // sleep until live state changes
+                    await sleep(LIVE_STATUS_CHECK_INTERVAL)
+                } else {
+                    // capture stream
+                    const outputPath = getOutputPath(output, outputDir, { idol: name })
+                    await captureStream(outputPath, canonicalRoomId)
                 }
 
                 const {
@@ -209,10 +226,11 @@ module.exports = {
                     // TODO: add stat about actual capture time, disruption count, etc.
 
                     // update telegram notification asynchronously, do not block
+                    const outcomeStr = noCapture ? '时长' : '已捕获'
                     notificationPromise.then(notification => {
                         notification.editMessageText({
                             parse_mode: 'HTML',
-                            text: `🌟hikaru: <a href="https://live.bilibili.com/${canonicalRoomId}">${name} (${canonicalRoomId})</a> 直播「${postCaptureTitle}」结束，已捕获 ${formatTimeDuration(capturedDuration)}。`,
+                            text: `🌟hikaru: <a href="https://live.bilibili.com/${canonicalRoomId}">${name} (${canonicalRoomId})</a> 直播「${postCaptureTitle}」结束，${outcomeStr} ${formatTimeDuration(capturedDuration)}。`,
                             disable_notification: true,
                             disable_web_page_preview: true,
                         })
