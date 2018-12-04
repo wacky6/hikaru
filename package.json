@@ -5,6 +5,7 @@
   "bin": {
     "hikaru": "bin/hikaru"
   },
+  "main": "exports.js",
   "scripts": {
     "test": "tape test/*.js"
   },
@@ -16,6 +17,7 @@
     "mkdirp": "^0.5.1",
     "superagent": "^3.8.3",
     "winston": "^3.0.0",
+    "ws": "^6.0.0",
     "yargs": "^12.0.1"
   },
   "devDependencies": {
