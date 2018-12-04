@@ -13,6 +13,7 @@
   "author": "Jiewei Qian <qjw@wacky.one>",
   "license": "GPL-3.0",
   "dependencies": {
+    "amqplib": "^0.5.3",
     "dateformat": "^3.0.3",
     "mkdirp": "^0.5.1",
     "shuffle-array": "^1.0.1",
