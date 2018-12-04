@@ -2,10 +2,12 @@
 
 const RUN = require('../handlers/run')
 const DAEMON = require('../handlers/daemon')
+const DMK = require('../handlers/dmk')
 
 require('yargs')
     .usage('$0 <cmd> [options] [args]')
     .command('run <room_id>', 'Capture live', RUN.yargs, RUN.handler)
     .command('daemon <room_id>', 'Monitor idol', DAEMON.yargs, DAEMON.handler)
+    .command('dmk <room_id..>', 'Monitor danmaku channel', DMK.yargs, DMK.handler)
     .argv
 
