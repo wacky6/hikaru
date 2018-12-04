@@ -15,6 +15,7 @@
   "dependencies": {
     "dateformat": "^3.0.3",
     "mkdirp": "^0.5.1",
+    "shuffle-array": "^1.0.1",
     "superagent": "^3.8.3",
     "winston": "^3.0.0",
     "ws": "^6.0.0",
