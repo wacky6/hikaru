@@ -126,21 +126,17 @@ module.exports = {
             dmk.connect()
 
             dmk.on('danmaku', (danmakuStr, meta) => {
-                publisher && publisher.send({
-                    roomId,
-                    worker,
-                    server: meta.server,
-                    rxTime: meta.rx_time,
-                    danmaku: JSON.parse(danmakuStr)
-                })
-                dbConn && dbConn.send({
+                const payload = {
                     ...transformDanmaku(JSON.parse(danmakuStr)),
                     roomId,
                     _rxTime: meta.rx_time,
                     _txServer: meta.server,
                     _worker: worker,
                     _proc: procId,
-                })
+                }
+
+                publisher && publisher.send(payload)
+                dbConn && dbConn.send(payload)
             })
 
             console.log(`monitoring ${roomId} ${title}`)
