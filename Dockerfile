@@ -6,5 +6,6 @@ RUN apk add --no-cache curl
 RUN yarn install
 RUN mkdir -p ~/hikaru/
 
-# TODO: make Dockerfile include crontab support
+ENV HIKARU_DEFAULT_AMQP="amqp://rabbitmq/"
+
 ENTRYPOINT ["bin/hikaru"]
