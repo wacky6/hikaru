@@ -1,5 +1,6 @@
 // global options parser
 const parseTelegram = require('../lib/telegram-parser')
+const { defaultMongodbConnection } = require('../lib/_mongo')
 
 module.exports = {
     injectOptions: (yargs, ...opts) =>
@@ -43,6 +44,19 @@ module.exports = {
             alias: 'silent',
             describe: 'deliver notification silently',
             type: 'boolean',
+            default: false
+        })
+    ,
+    database: yargs => yargs
+        .option('db', {
+            describe: 'mongodb connection string',
+            type: 'string',
+            default: defaultMongodbConnection,
+        })
+        .option('d', {
+            alias: 'dump',
+            type: 'boolean',
+            describe: 'dump danmaku to database, see --db',
             default: false
         })
 }
