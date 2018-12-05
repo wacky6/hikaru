@@ -1,11 +1,10 @@
 FROM node:alpine
-MAINTAINER Jiewei Qian <qjw@wacky.one>
-
-ADD . .
-RUN apk add --no-cache curl
-RUN yarn install
-RUN mkdir -p ~/hikaru/
+LABEL maintainer="Jiewei Qian <qjw@wacky.one>"
 
 ENV HIKARU_DEFAULT_AMQP="amqp://rabbitmq/"
+
+RUN mkdir -p ~/hikaru/
+ADD . .
+RUN apk add --no-cache curl && yarn install
 
 ENTRYPOINT ["bin/hikaru"]
