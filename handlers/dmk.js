@@ -31,7 +31,7 @@ function transformDanmaku(dmk) {
             user: {
                 id: user[0],
                 name: user[1],
-                title: userTitle[0],
+                title: userTitle && userTitle[0],
                 guardLevel: userGuardLevel,
                 liveVip: user[3],          // 姥爷？
                 liveAnnualVip: user[4],    // 年费姥爷？
