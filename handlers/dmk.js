@@ -96,7 +96,7 @@ module.exports = {
             alias: 'worker',
             type: 'string',
             describe: 'worker identifier',
-            default: 'hikaru-dmk'
+            default: require('os').hostname() || 'hikaru-dmk',
         })
     ,
 
