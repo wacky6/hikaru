@@ -136,7 +136,10 @@ module.exports = {
                 }
 
                 publisher && publisher.send(payload)
-                dbConn && dbConn.send(payload)
+                dbConn && dbConn.send({
+                    ...payload,
+                    _rxTime: new Date(payload._rxTime),
+                })
             })
 
             console.log(`monitoring ${roomId} ${title}`)
