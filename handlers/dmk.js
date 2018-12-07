@@ -181,11 +181,15 @@ module.exports = {
             const userInfo = await autoRetry(getRoomUser, roomId)
             const { uid, name } = userInfo
 
-            dbConn && dbConn.upsert({
-                ...roomInfo,
-                ...userInfo,
-                _id: uid,
-            }, 'user')
+            dbConn && dbConn.getConn().then(
+                conn => conn.db().collection('user').updateOne(
+                    { _id: uid },
+                    { $set: { ...roomInfo, ...userInfo },
+                      $currentDate: { _lastModified: true },
+                    },
+                    { upsert: true }
+                ).catch(dbConn.errorHandler)
+            )
 
             const roomLogPath = logPath && expandStringTemplate(logPath, {roomid: roomId})
             const dmk = new HighAvailabilityDanmakuStream(roomId, { logPath: roomLogPath, redundency })
@@ -208,10 +212,12 @@ module.exports = {
                     return
                 }
                 publisher && publisher.send(payload)
-                dbConn && dbConn.send({
-                    ...payload,
-                    _rxTime: new Date(payload._rxTime),
-                })
+                dbConn && dbConn.getConn().then(
+                    conn => conn.db().collection('danmaku').insertOne({
+                        ...payload,
+                        _rxTime: new Date(payload._rxTime)
+                    }).catch(dbConn.errorHandler)
+                )
             }
 
             const raffleFilter = RaffleFilter(processPayload)
@@ -224,6 +230,7 @@ module.exports = {
                     _txServer: meta.server,
                     _worker: worker,
                 }
+
                 if (payload.cmd === 'DANMU_MSG' && enableRaffleFilter) {
                     raffleFilter(payload.text, payload._rxTime, payload)
                 } else {
