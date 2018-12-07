@@ -6,6 +6,7 @@ const { MongoDump } = require('../lib/_mongo')
 const AmqpPublisher = require('../lib/amqp-publish')
 const expandStringTemplate = require('../lib/string-template')
 const shortid = require('shortid')
+const { format } = require('util')
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -108,7 +109,7 @@ module.exports = {
         })
     ,
 
-    handler: argv => {
+    handler: async argv => {
         const {
             room_id,
             logPath,
@@ -123,9 +124,19 @@ module.exports = {
         } = argv
 
         const publisher = publish && new AmqpPublisher(publishUrl, publishName)
-        const dbConn = dump && new MongoDump(db, 'danmaku')
         const healthPublisher = publishHealth && new AmqpPublisher(publishUrl, defaultHealthExchangeName)
+        const dbConn = dump && new MongoDump(db, 'danmaku')
         const procId = shortid.generate()
+
+
+        if (dbConn) {
+            await Promise.race([
+                dbConn.connect(),
+                sleep(5000)
+            ]).then(
+                ret => ret || console.error('mongo: connection not established yet, continue anyway.')
+            )
+        }
 
         const shouldDeferAtStartUp = room_id.length >= 3
 
@@ -136,8 +147,17 @@ module.exports = {
                 await sleep(Math.floor((idx + 0.25 + Math.random() / 2) * BASE_DELAY))
             }
 
-            const { roomId } = await autoRetry(getRoomInfo, room_id)
-            const { name, uid } = await autoRetry(getRoomUser, roomId)
+            const roomInfo = await autoRetry(getRoomInfo, room_id)
+            const { roomId } = roomInfo
+
+            const userInfo = await autoRetry(getRoomUser, roomId)
+            const { uid, name } = userInfo
+
+            dbConn && dbConn.upsert({
+                ...roomInfo,
+                ...userInfo,
+                _id: uid,
+            }, 'user')
 
             const roomLogPath = logPath && expandStringTemplate(logPath, {roomid: roomId})
             const dmk = new HighAvailabilityDanmakuStream(roomId, { logPath: roomLogPath, redundency })
@@ -172,7 +192,9 @@ module.exports = {
                 })
             })
 
-            dmk.once('heartbeat', () => console.log(`monitoring: ${room_id} -> ${roomId}, ${name} (${uid})`))
+            dmk.once('heartbeat', ({server, rtt}) => {
+                console.error(`monitoring: ${room_id} (${roomId})\t${name} (${uid})\t${server} (${rtt}ms)`)
+            })
         })
     },
 }
