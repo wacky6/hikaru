@@ -1,7 +1,7 @@
 const { global: injectGlobalOptions, database: injectDatabaseOptions } = require('./_options')
 const { getRoomInfo } = require('../lib/bili-api')
 const { HighAvailabilityDanmakuStream } = require('../lib/danmaku')
-const { defaultEndpoint, defaultExchangeName } = require('../lib/_amqp')
+const { defaultEndpoint, defaultExchangeName, defaultHealthExchangeName } = require('../lib/_amqp')
 const { MongoDump } = require('../lib/_mongo')
 const AmqpPublisher = require('../lib/amqp-publish')
 const expandStringTemplate = require('../lib/string-template')
@@ -80,6 +80,12 @@ module.exports = {
             describe: 'enable danmaku publishing',
             default: false,
         })
+        .option('h', {
+            alias: 'publish-health',
+            type: 'boolean',
+            describe: 'enable health stats publishing',
+            default: false,
+        })
         .option('P', {
             alias: 'publish-url',
             type: 'string',
@@ -108,13 +114,15 @@ module.exports = {
             publish,
             publishUrl,
             publishName,
+            publishHealth,
             worker,
             db,
             dump
         } = argv
 
         const publisher = publish && new AmqpPublisher(publishUrl, publishName)
-        const dbConn = dump && new MongoDump(db)
+        const dbConn = dump && new MongoDump(db, 'danmaku')
+        const healthPublisher = publishHealth && new AmqpPublisher(publishUrl, defaultHealthExchangeName)
         const procId = shortid.generate()
 
         room_id.forEach(async room_id => {
@@ -124,6 +132,17 @@ module.exports = {
             const dmk = new HighAvailabilityDanmakuStream(roomId, { logPath: roomLogPath, redundency })
 
             dmk.connect()
+
+            dmk.on('hdas', ({event, server}) => {
+                healthPublisher && healthPublisher.send({
+                    event,
+                    server,
+                    roomId,
+                    time: Date.now(),
+                    worker,
+                    proc: procId,
+                })
+            })
 
             dmk.on('danmaku', (danmakuStr, meta) => {
                 const payload = {
