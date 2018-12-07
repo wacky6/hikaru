@@ -1,11 +1,13 @@
 const { global: injectGlobalOptions, database: injectDatabaseOptions } = require('./_options')
-const { getRoomInfo } = require('../lib/bili-api')
+const { autoRetry, getRoomInfo, getRoomUser } = require('../lib/bili-api')
 const { HighAvailabilityDanmakuStream } = require('../lib/danmaku')
 const { defaultEndpoint, defaultExchangeName, defaultHealthExchangeName } = require('../lib/_amqp')
 const { MongoDump } = require('../lib/_mongo')
 const AmqpPublisher = require('../lib/amqp-publish')
 const expandStringTemplate = require('../lib/string-template')
 const shortid = require('shortid')
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 function transformDanmaku(dmk) {
     if (!dmk) return dmk
@@ -125,8 +127,17 @@ module.exports = {
         const healthPublisher = publishHealth && new AmqpPublisher(publishUrl, defaultHealthExchangeName)
         const procId = shortid.generate()
 
-        room_id.forEach(async room_id => {
-            const { roomId, title } = await getRoomInfo(room_id)
+        const shouldDeferAtStartUp = room_id.length >= 3
+
+        room_id.forEach(async (room_id, idx) => {
+            if (shouldDeferAtStartUp) {
+                // randomly sleep for 0.25-0.75 BASE_DELAY for each room
+                const BASE_DELAY = 10000
+                await sleep(Math.floor((idx + 0.25 + Math.random() / 2) * BASE_DELAY))
+            }
+
+            const { roomId } = await autoRetry(getRoomInfo, room_id)
+            const { name, uid } = await autoRetry(getRoomUser, roomId)
 
             const roomLogPath = logPath && expandStringTemplate(logPath, {roomid: roomId})
             const dmk = new HighAvailabilityDanmakuStream(roomId, { logPath: roomLogPath, redundency })
@@ -161,7 +172,7 @@ module.exports = {
                 })
             })
 
-            console.log(`monitoring ${roomId} ${title}`)
+            dmk.once('heartbeat', () => console.log(`monitoring: ${room_id} -> ${roomId}, ${name} (${uid})`))
         })
     },
 }
