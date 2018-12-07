@@ -6,7 +6,7 @@ const { MongoDump } = require('../lib/_mongo')
 const AmqpPublisher = require('../lib/amqp-publish')
 const expandStringTemplate = require('../lib/string-template')
 const shortid = require('shortid')
-const { format } = require('util')
+const setupSigterm = require('../lib/sigterm-handler')
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -128,6 +128,7 @@ module.exports = {
         const dbConn = dump && new MongoDump(db, 'danmaku')
         const procId = shortid.generate()
 
+        setupSigterm()
 
         if (dbConn) {
             await Promise.race([

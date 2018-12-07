@@ -5,6 +5,7 @@ const {
     injectOptions
 } = require('./_options')
 const RUN = require('./run')
+const setupSigterm = require('../lib/sigterm-handler')
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -23,6 +24,7 @@ module.exports = {
         })
     ,
     handler: async argv => {
+        setupSigterm()
         while (true) {
             const ret = await RUN.handler({
                 ...argv,
