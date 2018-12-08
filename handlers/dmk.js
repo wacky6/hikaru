@@ -7,6 +7,7 @@ const AmqpPublisher = require('../lib/amqp-publish')
 const expandStringTemplate = require('../lib/string-template')
 const shortid = require('shortid')
 const setupSigterm = require('../lib/sigterm-handler')
+const RaffleFilter = require('../lib/raffle-filter')
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -107,6 +108,12 @@ module.exports = {
             describe: 'worker identifier',
             default: require('os').hostname() || 'hikaru-dmk',
         })
+        .option('R', {
+            alias: 'raffle-filter',
+            type: 'boolean',
+            describe: 'enable raffle filter, remove excessive danmaku',
+            default: false,
+        })
     ,
 
     handler: async argv => {
@@ -120,7 +127,8 @@ module.exports = {
             publishHealth,
             worker,
             db,
-            dump
+            dump,
+            raffleFilter: enableRaffleFilter,
         } = argv
 
         const publisher = publish && new AmqpPublisher(publishUrl, publishName)
@@ -176,6 +184,16 @@ module.exports = {
                 })
             })
 
+            const processPayload = payload => {
+                publisher && publisher.send(payload)
+                dbConn && dbConn.send({
+                    ...payload,
+                    _rxTime: new Date(payload._rxTime),
+                })
+            }
+
+            const raffleFilter = RaffleFilter(processPayload)
+
             dmk.on('danmaku', (danmakuStr, meta) => {
                 const payload = {
                     ...transformDanmaku(JSON.parse(danmakuStr)),
@@ -185,12 +203,11 @@ module.exports = {
                     _worker: worker,
                     _proc: procId,
                 }
-
-                publisher && publisher.send(payload)
-                dbConn && dbConn.send({
-                    ...payload,
-                    _rxTime: new Date(payload._rxTime),
-                })
+                if (payload.cmd === 'DANMU_MSG' && enableRaffleFilter) {
+                    raffleFilter(payload.text, payload)
+                } else {
+                    processPayload(payload)
+                }
             })
 
             dmk.once('heartbeat', ({server, rtt}) => {
