@@ -111,4 +111,74 @@ module.exports = {
                 ))
             })
         }
+    ,
+
+    async replayDanmaku(sourceDb, destinationDb) {
+        const [src, dst] = await Promise.all([
+            new MongoDump(sourceDb).getConn(),
+            new MongoDump(destinationDb).getConn()
+        ])
+
+        let countUser = 0
+        const cursorUser = src.db().collection('user').find({})
+        while (await cursorUser.hasNext()) {
+            const val = await cursorUser.next()
+
+            await dst.db().collection('user').updateOne(
+                { _id: val._id },
+                { $set: val },
+                { upsert: true }
+            ).then(
+                _ => {
+                    countUser += 1
+                    console.log(`${countUser} ${val.name}`)
+                },
+                err => console.error(err)
+            )
+        }
+        await cursorUser.close()
+
+        let countDanmaku = 0
+        const cursorDanmaku = src.db().collection('danmaku').find({})
+        const danmakuSize = await cursorDanmaku.count()
+
+        while (await cursorDanmaku.hasNext()) {
+            if (++countDanmaku % 100 === 0) {
+                console.log(`\r${countDanmaku} / ${danmakuSize}`)
+            }
+            const msg = await cursorDanmaku.next()
+
+            const parsed = parseMsg(msg)
+            if (!parsed) {
+                continue
+            }
+
+            // inject host info
+            dst.db().collection('user').findOne(
+                { roomId: msg.roomId },
+                { name: 1, uid: 1 }
+            ).then(hostInfo => {
+                const payload = {
+                    roomId: msg.roomId,
+                    time: new Date(msg._rxTime),
+                    cmd: msg.cmd,
+                    ...parsed,
+                    ...(hostInfo ? {
+                        hname: hostInfo.name,
+                        hid: hostInfo.uid,
+                    } : {})
+                }
+
+                dst.db().collection('gaze_host').insertOne(payload).then(
+                    _ => null,
+                    err => {
+                        console.error(err)
+                    }
+                )
+            })
+        }
+
+        console.log(`\r${countDanmaku} / ${danmakuSize}`)
+        await cursorDanmaku.close()
+    }
 }
