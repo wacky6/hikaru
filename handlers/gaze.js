@@ -2,13 +2,14 @@ const {
     global: globalOpts,
     telegram: telegramOpts,
     database: databaseOpts,
+    subscribe: subscribeOpts,
     injectOptions
 } = require('./_options')
 
-const { defaultEndpoint, defaultExchangeName } = require('../lib/_amqp')
 const { MongoDump } = require('../lib/_mongo')
 const AmqpSubscriber = require('../lib/amqp-subscribe')
 const stringWidth = require('string-width')
+const { guardLevel } = require('../lib/to-text')
 
 const safePad = (s, width = 30) => {
     const w = stringWidth(s)
@@ -17,48 +18,41 @@ const safePad = (s, width = 30) => {
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 
-const transformGuardLevel = val => {
-    if (val === 3) return '舰长'
-    if (val === 2) return '提督'
-    if (val === 1) return '总督'
-    return `未知${val}`
-}
-
 // -> { uid, name, ... }
 const parseMsg = msg => {
     switch(msg.cmd) {
         case 'DANMU_MSG':
             return {
                 uid: msg.user.id,
-                name: msg.user.name,
+                uname: msg.user.name,
                 action: '弹幕',
                 note: msg.text,
             }
         case 'SEND_GIFT':
             return {
                 uid: msg.uid,
-                name: msg.uname,
+                uname: msg.uname,
                 action: '礼物',
                 note: `${msg.giftName} x ${msg.num}`
             }
         case 'WELCOME':
             return {
                 uid: msg.uid,
-                name: msg.uname,
+                uname: msg.uname,
                 action: `入场 ${msg.svip ? '年费': ''}老爷`,
                 note: ''
             }
         case 'WELCOME_GUARD':
             return {
                 uid: msg.uid,
-                name: msg.username,
-                action: `入场 ${transformGuardLevel(msg.guard_level)}`,
+                uname: msg.username,
+                action: `入场 ${guardLevel(msg.guard_level)}`,
                 note: ''
             }
         case 'GUARD_BUY':
             return {
                 uid: msg.uid,
-                name: msg.username,
+                uname: msg.username,
                 action: `上船 ${msg.gift_name}`,
                 note: msg.num > 1 ? `x ${msg.num}` : ''
             }
@@ -67,22 +61,10 @@ const parseMsg = msg => {
 }
 
 module.exports = {
-    yargs: yargs => injectOptions(yargs, globalOpts, telegramOpts, databaseOpts)
+    yargs: yargs => injectOptions(yargs, globalOpts, telegramOpts, databaseOpts, subscribeOpts)
         .usage('$0 <uid|user..>')
         .positional('uid|user', {
             describe: 'user id, user name fragment; user "" (empty string) to catch all'
-        })
-        .option('S', {
-            alias: 'subscribe-url',
-            type: 'string',
-            describe: 'amqp subscribe url',
-            default: defaultEndpoint,
-        })
-        .option('n', {
-            alias: 'subscribe-name',
-            type: 'string',
-            describe: 'amqp subscribe exchange name',
-            default: defaultExchangeName,
         })
         .option('r', {
             alias: 'room',
@@ -123,8 +105,8 @@ module.exports = {
                 )
             }
 
-            subscriber.on('message', async msg => {
-                msg = JSON.parse(msg)
+            subscriber.on('message', async _msg => {
+                const msg = JSON.parse(_msg)
                 const parsed = parseMsg(msg)
 
                 if (!parsed) return
@@ -191,7 +173,7 @@ module.exports = {
                         $currentDate: { _lastModified: true },
                         },
                         { upsert: true }
-                    ).catch(_ => dbConn.errorHandler)
+                    ).catch(dbConn.errorHandler)
                 ))
             })
         }

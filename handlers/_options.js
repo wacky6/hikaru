@@ -1,6 +1,7 @@
 // global options parser
 const parseTelegram = require('../lib/telegram-parser')
 const { defaultMongodbConnection } = require('../lib/_mongo')
+const { defaultEndpoint, defaultExchangeName } = require('../lib/_amqp')
 
 module.exports = {
     injectOptions: (yargs, ...opts) =>
@@ -64,5 +65,19 @@ module.exports = {
             type: 'boolean',
             describe: 'dump danmaku to database, see --db',
             default: false
+        })
+    ,
+    subscribe: yargs => yargs
+        .option('S', {
+            alias: 'subscribe-url',
+            type: 'string',
+            describe: 'amqp subscribe url',
+            default: defaultEndpoint,
+        })
+        .option('n', {
+            alias: 'subscribe-name',
+            type: 'string',
+            describe: 'amqp subscribe exchange name',
+            default: defaultExchangeName,
         })
 }
