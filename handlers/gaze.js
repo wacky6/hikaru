@@ -119,12 +119,19 @@ module.exports = {
                 } = parsed
 
                 // check if we are observing
-                const isObserving = (
-                    ((room && room === msg.roomId) || (!room))
-                    &&
-                    (uids.includes(uid) || userNames.findIndex(nameToFind => uname.includes(nameToFind)) >= 0 )
-                )
-                if (!isObserving) return
+                try {
+                    const isObserving = (
+                        ((room && room === msg.roomId) || (!room))
+                        &&
+                        (uids.includes(uid) || userNames.findIndex(nameToFind => uname.includes(nameToFind)) >= 0 )
+                    )
+                    if (!isObserving) return
+                } catch(e) {
+                    console.error('caught observing check fail:')
+                    console.error(`parsed = ${JSON.stringify(parsed)}`)
+                    console.error(`source = ${JSON.stringify(msg)}`)
+                    return
+                }
 
                 // inject host info
                 const hostInfo = await (dbConn && dbConn.getConn().then(
