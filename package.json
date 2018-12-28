@@ -15,8 +15,8 @@
   "dependencies": {
     "amqplib": "^0.5.3",
     "dateformat": "^3.0.3",
-    "dayjs": "^1.7.7",
     "mkdirp": "^0.5.1",
+    "moment-timezone": "^0.5.23",
     "mongodb": "^3.1.10",
     "shuffle-array": "^1.0.1",
     "string-width": "^2.1.1",

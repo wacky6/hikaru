@@ -8,11 +8,116 @@ const {
 const AmqpSubscriber = require('../lib/amqp-subscribe')
 const parseDanmaku = require('../lib/providence-danmaku-parser')
 const { MongoDump } = require('../lib/_mongo')
+const moment = require('moment-timezone')
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
-const dayjs = require('dayjs')
+
 const toStatTime = date => {
-    return dayjs(date).set('minute', 0).set('second', 0).set('ms', 0).toDate()
+    return moment(date).tz('Asia/Shanghai').hour(0).minute(0).second(0).millisecond(0).toDate()
+}
+
+function getHostSummaryUpdate(parsedDanmaku) {
+    const {
+        uname,
+        action,
+        gold = 0,
+        silver = 0,
+        ...rest
+    } = parsedDanmaku
+
+    return (
+          action === 'DANMAKU' ? {
+            $inc: { danmaku: 1 },
+        }
+        : action === 'GIFT' ? {
+            $inc: {
+                gold,
+                silver,
+                [`giftSum.${rest.giftName}.num`]: rest.giftNum
+            },
+            $set: { [`giftSum.${rest.giftName}.type`]: rest.coinType },
+            $max: { [`giftSum.${rest.giftName}.price`]: rest.price },
+        }
+        : action === 'GUARD' ? {
+            $inc: {
+                gold,
+                silver,
+                [`guardSum.${rest.guardName}.num`]: rest.guardNum
+            },
+            $set: { [`guardSum.${rest.guardName}.type`]: rest.coinType },
+            $max: { [`guardSum.${rest.guardName}.price`]: rest.price },
+        }
+        : null
+    )
+}
+
+function getUserSummaryUpdate(parsedDanmaku) {
+    const {
+        uname,
+        action,
+        gold = 0,
+        silver = 0,
+        ...rest
+    } = parsedDanmaku
+
+    return (
+          action === 'DANMAKU' ? {
+            $set: { uname },
+            $inc: { danmaku: 1 },
+            $push: {
+                'danmakus': {
+                    $each: [{ text: rest.text }],
+                    $slice: -50000,    // limit maximum amount of danmakus kept in each log entry
+                },
+            },
+        }
+        : action === 'GIFT' ? {
+            $inc: {
+                gold,
+                silver,
+                [`giftSum.${rest.giftName}.num`]: rest.giftNum
+            },
+            $set: { uname, [`giftSum.${rest.giftName}.type`]: rest.coinType },
+            $max: { [`giftSum.${rest.giftName}.price`]: rest.price },
+        }
+        : action === 'GUARD' ? {
+            $inc: {
+                gold,
+                silver,
+                [`guardSum.${rest.guardName}.num`]: rest.guardNum
+            },
+            $set: { uname, [`guardSum.${rest.guardName}.type`]: rest.coinType },
+            $max: { [`guardSum.${rest.guardName}.price`]: rest.price },
+        }
+        : null
+    )
+}
+
+function upsertWithRetry(dbConn, coll, id, updateOperator) {
+    let retryCount = 0
+
+    const updateFn = _ => dbConn.getConn().then(
+        conn => conn.db().collection(coll).updateOne(
+            { _id: id },
+            updateOperator,
+            { upsert: true },
+        ).catch(err => {
+            if (err.code === 11000) {
+                // retry if we found duplicate key error
+                if (++retryCount > 10) {
+                    console.error(`retry count exceeded: ${err.message}`)
+                    return dbConn.errorHandler(err)
+                } else {
+                    return sleep(100).then(updateFn)
+                }
+            } else {
+                console.error(err)
+                return dbConn.errorHandler(err)
+            }
+        })
+    )
+
+    return updateFn()
 }
 
 module.exports = {
@@ -42,97 +147,27 @@ module.exports = {
 
         sub.on('message', async _msg => {
             const msg = JSON.parse(_msg)
-            const parsed = parseDanmaku(msg)
-            const time = new Date(msg._rxTime)
 
+            const parsed = parseDanmaku(msg)
             if (!parsed) return
 
-            const {
-                uid,
-                uname,
-                action,
-                gold = 0,
-                silver = 0,
-                ...rest
-            } = parsed
+            const updateHost = getHostSummaryUpdate(parsed)
+            const updateUser = getUserSummaryUpdate(parsed)
+            const statTime = toStatTime(msg._rxTime)
 
-            const id = {
-                roomId: msg.roomId,
-                uid: parsed.uid,
-                time: toStatTime(time)
-            }
-
-            const updateOperator = (
-                action === 'DANMAKU' ? {
-                    $addToSet: { uname },
-                    $inc: { danmaku: 1 },
-                    $push: {
-                        'danmakus': {
-                            $each: [{ time, text: rest.text }],
-                            $slice: -20000,    // limit maximum amount of danmakus kept in each log entry
-                        },
-                    },
-                }
-                : action === 'GIFT' ? {
-                    $addToSet: { uname },
-                    $inc: {
-                        gold,
-                        silver,
-                        [`giftSum.${rest.giftName}.num`]: rest.giftNum
-                    },
-                    $set: { [`giftSum.${rest.giftName}.type`]: rest.coinType },
-                    $max: { [`giftSum.${rest.giftName}.price`]: rest.price },
-                    $push: {
-                        gifts: {
-                            $each: [{ time, name: rest.giftName, num: rest.giftNum }],
-                            $slice: -20000,
-                        }
-                    }
-                }
-                : action === 'GUARD' ? {
-                    $addToSet: { uname },
-                    $inc: {
-                        gold,
-                        [`guardSum.${rest.guardName}.num`]: rest.guardNum
-                    },
-                    $set: { [`guardSum.${rest.guardName}.type`]: rest.coinType },
-                    $max: { [`guardSum.${rest.guardName}.price`]: rest.price },
-                    $push: {
-                        guards: {
-                            $each: [{ time, name: rest.guardName, num: rest.guardNum }],
-                            $slice: -20000,
-                        }
-                    },
-                }
-                : null
+            updateHost && upsertWithRetry(
+                dbConn,
+                'providence_host',
+                { time: statTime, roomId: msg.roomId },
+                updateHost
             )
 
-            if (!updateOperator) return
-
-            let retryCount = 0
-
-            const updateFn = _ => dbConn.getConn().then(
-                conn => conn.db().collection('providence').updateOne(
-                    { _id: id },
-                    updateOperator,
-                    { upsert: true },
-                ).catch(err => {
-                    if (err.code === 11000) {
-                        // retry if we found duplicate key error
-                        if (++retryCount > 10) {
-                            console.error(`retry count exceeded: ${err.message}`)
-                            return dbConn.errorHandler(err)
-                        } else {
-                            return sleep(100).then(updateFn)
-                        }
-                    } else {
-                        console.error(err)
-                        return dbConn.errorHandler(err)
-                    }
-                })
+            updateUser && upsertWithRetry(
+                dbConn,
+                'providence_user',
+                { time: statTime, uid: parsed.uid, roomId: msg.roomId },
+                updateUser
             )
-
-            updateFn()
         })
     }
 }

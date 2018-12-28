@@ -60,12 +60,6 @@ module.exports = {
             type: 'string',
             default: defaultMongodbConnection,
         })
-        .option('d', {
-            alias: 'dump',
-            type: 'boolean',
-            describe: 'dump danmaku to database, see --db',
-            default: false
-        })
     ,
     subscribe: yargs => yargs
         .option('S', {

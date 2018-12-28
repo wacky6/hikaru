@@ -157,11 +157,6 @@ dateformat@^3.0.3:
   version "3.0.3"
   resolved "https://registry.npmjs.org/dateformat/-/dateformat-3.0.3.tgz#a6e37499a4d9a9cf85ef5872044d62901c9889ae"
 
-dayjs@^1.7.7:
-  version "1.7.7"
-  resolved "https://registry.npmjs.org/dayjs/-/dayjs-1.7.7.tgz#8df20f78ac2476e3f5348ef49f8f22ebc3016370"
-  integrity sha512-Qlkiu0NNDpYwhk0syK4ImvAl/5YnsEMkvC2O123INviGeOA3Q8s5VyVkZzmN5SC7Wv9bb1+rfwO+uSqtHB4UWw==
-
 debug@^3.1.0:
   version "3.1.0"
   resolved "https://registry.npmjs.org/debug/-/debug-3.1.0.tgz#5bb5a0672628b64149566ba16819e61518c67261"
@@ -473,6 +468,18 @@ mkdirp@^0.5.1:
   resolved "https://registry.npmjs.org/mkdirp/-/mkdirp-0.5.1.tgz#30057438eac6cf7f8c4767f38648d6697d75c903"
   dependencies:
     minimist "0.0.8"
+
+moment-timezone@^0.5.23:
+  version "0.5.23"
+  resolved "https://registry.npmjs.org/moment-timezone/-/moment-timezone-0.5.23.tgz#7cbb00db2c14c71b19303cb47b0fb0a6d8651463"
+  integrity sha512-WHFH85DkCfiNMDX5D3X7hpNH3/PUhjTGcD0U1SgfBGZxJ3qUmJh5FdvaFjcClxOvB3rzdfj4oRffbI38jEnC1w==
+  dependencies:
+    moment ">= 2.9.0"
+
+"moment@>= 2.9.0":
+  version "2.23.0"
+  resolved "https://registry.npmjs.org/moment/-/moment-2.23.0.tgz#759ea491ac97d54bac5ad776996e2a58cc1bc225"
+  integrity sha512-3IE39bHVqFbWWaPOMHZF98Q9c3LDKGTmypMiTM2QygGXXElkFWIH7GxfmlwmY2vwa+wmNsoYZmG2iusf1ZjJoA==
 
 mongodb-core@3.1.9:
   version "3.1.9"

@@ -71,6 +71,12 @@ module.exports = {
             type: 'number',
             describe: 'monitor activity in room, must be canonical room id'
         })
+        .option('d', {
+            alias: 'dump',
+            type: 'boolean',
+            describe: 'dump danmaku to database, see --db',
+            default: false
+        })
     ,
         handler: async argv => {
             const {

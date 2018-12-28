@@ -50,6 +50,12 @@ module.exports = {
         .positional('room_id', {
             describe: 'canonical room_id, leave out to gaze all'
         })
+        .option('d', {
+            alias: 'dump',
+            type: 'boolean',
+            describe: 'dump danmaku to database, see --db',
+            default: false
+        })
     ,
         handler: async argv => {
             const {
