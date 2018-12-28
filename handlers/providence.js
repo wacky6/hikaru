@@ -149,6 +149,59 @@ async function updateHostInfo(dbConn, canonicalRoomId) {
     }
 }
 
+async function handleStatisticalMessage(dbConn, msg) {
+    const parsed = parseDanmaku(msg)
+    if (!parsed) return
+
+    const updateHost = getHostSummaryUpdate(parsed)
+    const updateUser = getUserSummaryUpdate(parsed)
+    const statTime = toStatTime(msg._rxTime)
+
+    await Promise.all([
+        updateHost && upsertWithRetry(
+            dbConn,
+            'providence_host',
+            { time: statTime, roomId: msg.roomId },
+            updateHost
+        ),
+        updateUser && upsertWithRetry(
+            dbConn,
+            'providence_user',
+            { time: statTime, uid: parsed.uid, roomId: msg.roomId },
+            updateUser
+        ),
+    ])
+}
+
+async function handleCommandMessage(dbConn, msg) {
+    const HOST_INFO_UPDATE_DELAY = 180 * 1000    // 3 min
+
+    if (msg.cmd === 'READY') {    // host is going on line
+        setTimeout(_ => updateHostInfo(dbConn, msg.roomId), HOST_INFO_UPDATE_DELAY)
+    }
+    if (msg.cmd === 'PREPARING') {    // host is going off live
+        setTimeout(_ => updateHostInfo(dbConn, msg.roomId), HOST_INFO_UPDATE_DELAY)
+    }
+    if (msg.cmd === 'WARNING') {    // admin is visiting, must be something of interest
+        await (
+            dbConn && dbConn.getConn().then(
+                conn => conn.db().collection('user').updateOne(
+                    { roomId: msg.roomId },
+                    {
+                        $inc: { total_warnings: 1 },
+                        $push: {
+                            'warnings': {
+                                $each: [{ time: new Date(msg._rxTime), text: msg.msg }],
+                                $slice: -10,
+                            },
+                        }
+                    },
+                ).catch(dbConn.errorHandler)
+            )
+        )
+    }
+}
+
 module.exports = {
     yargs: yargs => injectOptions(yargs, globalOpts, subscribeOpts, databaseOpts)
 
@@ -174,60 +227,10 @@ module.exports = {
             ret => ret || console.error('mongo: connection not established yet, continue anyway.')
         )
 
-        // deal with messages for statistical purposes
-        sub.on('message', async _msg => {
-            const msg = JSON.parse(_msg)
+        sub.on('message', _msg => handleStatisticalMessage(dbConn, JSON.parse(_msg)))
+        sub.on('message', _msg => handleCommandMessage(dbConn, JSON.parse(_msg)))
+    },
 
-            const parsed = parseDanmaku(msg)
-            if (!parsed) return
-
-            const updateHost = getHostSummaryUpdate(parsed)
-            const updateUser = getUserSummaryUpdate(parsed)
-            const statTime = toStatTime(msg._rxTime)
-
-            updateHost && upsertWithRetry(
-                dbConn,
-                'providence_host',
-                { time: statTime, roomId: msg.roomId },
-                updateHost
-            )
-
-            updateUser && upsertWithRetry(
-                dbConn,
-                'providence_user',
-                { time: statTime, uid: parsed.uid, roomId: msg.roomId },
-                updateUser
-            )
-        })
-
-        // deal with command messages
-        sub.on('message', async _msg => {
-            const msg = JSON.parse(_msg)
-
-            const HOST_INFO_UPDATE_DELAY = 180 * 1000    // 3 min
-
-            if (msg.cmd === 'READY') {    // host is going on line
-                setTimeout(_ => updateHostInfo(dbConn, msg.roomId), HOST_INFO_UPDATE_DELAY)
-            }
-            if (msg.cmd === 'PREPARING') {    // host is going off live
-                setTimeout(_ => updateHostInfo(dbConn, msg.roomId), HOST_INFO_UPDATE_DELAY)
-            }
-            if (msg.cmd === 'WARNING') {    // admin is visiting, must be something of interest
-                dbConn && dbConn.getConn().then(
-                    conn => conn.db().collection('user').updateOne(
-                        { roomId: msg.roomId },
-                        {
-                            $inc: { total_warnings: 1 },
-                            $push: {
-                                'warnings': {
-                                    $each: [{ time: new Date(msg._rxTime), text: msg.msg }],
-                                    $slice: -10,
-                                },
-                            }
-                        },
-                    ).catch(dbConn.errorHandler)
-                )
-            }
-        })
-    }
+    handleStatisticalMessage,
+    handleCommandMessage,
 }
