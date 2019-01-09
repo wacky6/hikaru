@@ -225,7 +225,7 @@ module.exports = {
                     _worker: worker,
                 }
                 if (payload.cmd === 'DANMU_MSG' && enableRaffleFilter) {
-                    raffleFilter(payload.text, payload)
+                    raffleFilter(payload.text, payload._rxTime, payload)
                 } else {
                     processPayload(payload)
                 }
