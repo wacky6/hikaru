@@ -5,11 +5,24 @@ const { defaultEndpoint, defaultExchangeName, defaultHealthExchangeName } = requ
 const { MongoDump } = require('../lib/_mongo')
 const AmqpPublisher = require('../lib/amqp-publish')
 const expandStringTemplate = require('../lib/string-template')
-const shortid = require('shortid')
 const setupSigterm = require('../lib/sigterm-handler')
 const RaffleFilter = require('../lib/raffle-filter')
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+const BROADCAST_CMDS = new Set([
+    'SYS_MSG',
+    'NOTICE_MSG',
+    'GUARD_LOTTERY_START',
+    'ROOM_RANK',
+    'WISH_BOTTLE',
+    'TV_START',
+    'TV_END',
+    'ACTIVITY_EVENT',
+    'GUARD_MSG',
+    'RAFFLE_START',
+    'SYS_GIFT',
+])
 
 function transformDanmaku(dmk) {
     if (!dmk) return dmk
@@ -102,6 +115,12 @@ module.exports = {
             describe: 'amqp publish exchange name',
             default: defaultExchangeName,
         })
+        .option('b', {
+            alias: 'publish-broadcast',
+            type: 'boolean',
+            describe: 'publish broadcast messages (SYS, NOTICE, LOTTERY, RAFFLE, ACTIVITY, WISH)',
+            default: false,
+        })
         .option('w', {
             alias: 'worker',
             type: 'string',
@@ -125,6 +144,7 @@ module.exports = {
             publishUrl,
             publishName,
             publishHealth,
+            publishBroadcast: publishBroadcastMessages,
             worker,
             db,
             dump,
@@ -134,7 +154,6 @@ module.exports = {
         const publisher = publish && new AmqpPublisher(publishUrl, publishName)
         const healthPublisher = publishHealth && new AmqpPublisher(publishUrl, defaultHealthExchangeName)
         const dbConn = dump && new MongoDump(db, 'danmaku')
-        const procId = shortid.generate()
 
         setupSigterm()
 
@@ -180,11 +199,14 @@ module.exports = {
                     roomId,
                     time: Date.now(),
                     worker,
-                    proc: procId,
                 })
             })
 
             const processPayload = payload => {
+                // ignore broadcast-like messages
+                if (!publishBroadcastMessages && BROADCAST_CMDS.has(payload.cmd)) {
+                    return
+                }
                 publisher && publisher.send(payload)
                 dbConn && dbConn.send({
                     ...payload,
@@ -201,7 +223,6 @@ module.exports = {
                     _rxTime: meta.rx_time,
                     _txServer: meta.server,
                     _worker: worker,
-                    _proc: procId,
                 }
                 if (payload.cmd === 'DANMU_MSG' && enableRaffleFilter) {
                     raffleFilter(payload.text, payload)
