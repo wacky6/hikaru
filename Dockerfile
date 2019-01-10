@@ -4,8 +4,12 @@ LABEL maintainer="Jiewei Qian <qjw@wacky.one>"
 ENV HIKARU_DEFAULT_AMQP="amqp://rabbitmq/"
 ENV HIKARU_DEFAULT_MONGO="mongodb://mongo/hikaru"
 
-RUN mkdir -p ~/hikaru/
-ADD . .
-RUN apk add --no-cache curl && yarn install
+USER root
+WORKDIR /root/
 
-ENTRYPOINT ["bin/hikaru"]
+ADD . /hikaru/
+RUN mkdir -p /root/hikaru/ && \
+    apk add --no-cache curl && \
+    ( cd /hikaru/ ; yarn install )
+
+ENTRYPOINT ["/hikaru/bin/hikaru"]
