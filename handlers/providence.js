@@ -14,7 +14,9 @@ const { autoRetry, getRoomInfo, getRoomUser } = require('../lib/bili-api')
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 const toStatTime = date => {
-    return moment(date).tz('Asia/Shanghai').hour(0).minute(0).second(0).millisecond(0).toDate()
+    // Use time 0800 (CST / +8) as day delimiter
+    const statDay = moment(date).tz('Asia/Shanghai').subtract(8, 'hours').format('YYYY-MM-DD')
+    return moment.tz(`${statDay} 08:00:00.000`, 'YYYY-MM-DD HH:mm:ss', 'Asia/Shanghai').toDate()
 }
 
 function getHostSummaryUpdate(parsedDanmaku) {
@@ -233,4 +235,6 @@ module.exports = {
 
     handleStatisticalMessage,
     handleCommandMessage,
+
+    toStatTime
 }
