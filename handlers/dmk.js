@@ -192,7 +192,7 @@ module.exports = {
 
             dmk.connect()
 
-            dmk.on('hdas', ({event, server}) => {
+            dmk.on('hads', ({event, server}) => {
                 healthPublisher && healthPublisher.send({
                     event,
                     server,
