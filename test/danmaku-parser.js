@@ -1,5 +1,5 @@
 const test = require('tape')
-const { BinaryFrameParser } = require('../handlers/_danmaku')
+const { BinaryFrameParser } = require('../lib/danmaku')
 
 /*
  * | Length  | Magic   |   Ver   | Action  |  Param  | Payload  |
