@@ -10,6 +10,16 @@ const parseDanmaku = require('../lib/providence-danmaku-parser')
 const { MongoDump } = require('../lib/_mongo')
 const moment = require('moment-timezone')
 const { autoRetry, getRoomInfo, getRoomUser } = require('../lib/bili-api')
+const parseFiles = require('../lib/parse-files')
+const fs = require('fs')
+const formatBytes = size => require('bytes').format(size, {fixedDecimals: true})
+const readline = require('readline')
+const { basename } = require('path')
+const { DanmakuHistory } = require('../lib/danmaku')
+const { transformDanmaku } = require('./dmk')
+const RaffleFilter = require('../lib/raffle-filter')
+const hostname = require('os').hostname()
+const writeTtyStatLine = require('../lib/write-tty-stat-line')
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -96,6 +106,7 @@ function getUserSummaryUpdate(parsedDanmaku) {
     )
 }
 
+// TODO: aggregate updates based on id to improve batch performance
 function upsertWithRetry(dbConn, coll, id, updateOperator) {
     let retryCount = 0
 
@@ -175,13 +186,13 @@ async function handleStatisticalMessage(dbConn, msg) {
     ])
 }
 
-async function handleCommandMessage(dbConn, msg) {
+async function handleCommandMessage(dbConn, msg, {performApiRequests = false} = {}) {
     const HOST_INFO_UPDATE_DELAY = 180 * 1000    // 3 min
 
-    if (msg.cmd === 'READY') {    // host is going on line
+    if (performApiRequests && msg.cmd === 'READY') {    // host is going on line
         setTimeout(_ => updateHostInfo(dbConn, msg.roomId), HOST_INFO_UPDATE_DELAY)
     }
-    if (msg.cmd === 'PREPARING') {    // host is going off live
+    if (performApiRequests && msg.cmd === 'PREPARING') {    // host is going off live
         setTimeout(_ => updateHostInfo(dbConn, msg.roomId), HOST_INFO_UPDATE_DELAY)
     }
     if (msg.cmd === 'WARNING') {    // admin is visiting, must be something of interest
@@ -204,33 +215,152 @@ async function handleCommandMessage(dbConn, msg) {
     }
 }
 
+function guessRoomIdFromPath(str) {
+    const m = /\d+/.exec(basename(str))
+    return m ? parseInt(m[0], 10) : null
+}
+
+function danmakuLineFilter(roomId, processPayload) {
+    const dmkHistory = new DanmakuHistory()
+    const raffleFilter = new RaffleFilter(processPayload)
+
+    return line => {
+        if (line === null) {
+            raffleFilter(null)
+            return
+        }
+
+        if (!line.startsWith('DANMAKU')) {
+            return
+        }
+
+        const {
+            server,
+            rx_time,
+            danmaku
+        } = JSON.parse(line.slice(8))
+
+        const dmkStr = JSON.stringify(danmaku)
+
+        if (!dmkHistory.has(dmkStr)) {
+            dmkHistory.put(dmkStr)
+
+            const payload = {
+                ...transformDanmaku(danmaku),
+                roomId: roomId,
+                _rxTime: rx_time,
+                _txServer: server,
+                _worker: `offline-${hostname}`,
+            }
+
+            if (payload.cmd === 'DANMU_MSG') {
+                raffleFilter(payload.text, payload._rxTime, payload)
+            } else {
+                processPayload(payload)
+            }
+        }
+    }
+}
+
 module.exports = {
     yargs: yargs => injectOptions(yargs, globalOpts, subscribeOpts, databaseOpts)
-
+        .option('i', {
+            alias: 'input',
+            describe: 'work on input danmaku log files, supports globbing; file name must contains canonical room id',
+            type: 'array',
+            coerce: parseFiles
+        })
     ,
 
     handler: async argv => {
-        process.on('SIGTERM', _ => process.exit(0))
-
         const {
             subscribeUrl,
             subscribeName,
-            db
+            db,
+            input,
         } = argv
 
-        const sub = new AmqpSubscriber(subscribeUrl, subscribeName)
-        sub.connect()
-
         const dbConn = new MongoDump(db)
-        await Promise.race([
-            dbConn.connect(),
-            sleep(5000)
-        ]).then(
-            ret => ret || console.error('mongo: connection not established yet, continue anyway.')
-        )
 
-        sub.on('message', _msg => handleStatisticalMessage(dbConn, JSON.parse(_msg)))
-        sub.on('message', _msg => handleCommandMessage(dbConn, JSON.parse(_msg)))
+        await dbConn.connectWithTimeout(5000).catch(err => {
+            if (input) {
+                console.error('mongo: not established, terminating')
+                process.exit(1)
+            } else {
+                console.error('mongo: connection not established yet, continue anyway.')
+            }
+        })
+
+        if (!input) {
+            // work from amqp
+            process.on('SIGTERM', _ => process.exit(0))
+
+            const sub = new AmqpSubscriber(subscribeUrl, subscribeName)
+            sub.connect()
+            sub.on('message', _msg => handleStatisticalMessage(dbConn, JSON.parse(_msg)))
+            sub.on('message', _msg => handleCommandMessage(dbConn, JSON.parse(_msg)))
+        } else {
+            // work on input files
+            const LINES_HIGHWATER_MARK = 10000
+            const files = input.map(inputPath => ({
+                path: inputPath,
+                roomId: guessRoomIdFromPath(inputPath),
+                size: fs.statSync(inputPath).size,
+            })).sort(
+                (a, b) => b.size - a.size
+            )
+
+            let numTotalValid = 0
+            let numTotalFinished = 0
+
+            await Promise.all(files.map(async ({path, roomId}) => {
+                let fileEnd = false
+                let danmakuQueue = []
+
+                const lineFilter = danmakuLineFilter(
+                    roomId,
+                    payload => {
+                        numTotalValid += 1
+                        if (numTotalValid > numTotalFinished + LINES_HIGHWATER_MARK) {
+                            rl.pause()
+                        }
+                        danmakuQueue.push(payload)
+                    }
+                )
+
+                const rl = readline.createInterface({ input: fs.createReadStream(path) })
+                rl.on('line', line => lineFilter(line))
+                rl.on('close', _ => {
+                    lineFilter(null)
+                    fileEnd = true
+                })
+
+                while (!fileEnd || danmakuQueue.length) {
+                    if (!danmakuQueue.length) {
+                        await sleep(10)    // sleep for short period to allow IO
+                        continue
+                    }
+                    const payload = danmakuQueue.shift()
+
+                    await handleStatisticalMessage(dbConn, payload, {performApiRequests: false})
+                    await handleCommandMessage(dbConn, payload, {performApiRequests: false})
+
+                    numTotalFinished += 1
+
+                    // readline flow control
+                    if (!fileEnd && numTotalValid <= numTotalFinished + LINES_HIGHWATER_MARK / 2) {
+                        rl.resume()
+                    }
+
+                    if (numTotalFinished % 100 === 0) {
+                        writeTtyStatLine(`  prog: ${numTotalFinished} / ${numTotalValid} @ ${formatBytes(process.memoryUsage().rss)}`)
+                    }
+                }
+            }))
+
+            writeTtyStatLine(`  prog: ${numTotalFinished} / ${numTotalValid} @ ${formatBytes(process.memoryUsage().rss)}\n`)
+            dbConn.close()
+        }
     },
 
     handleStatisticalMessage,

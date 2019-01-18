@@ -16,8 +16,6 @@ const safePad = (s, width = 30) => {
     return s + ' '.repeat(Math.max(0, width - w))
 }
 
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
-
 // -> { uid, name, ... }
 const parseMsg = msg => {
     switch(msg.cmd) {
@@ -103,12 +101,9 @@ module.exports = {
 
             const dbConn = dump && new MongoDump(db)
             if (dbConn) {
-                await Promise.race([
-                    dbConn.connect(),
-                    sleep(5000)
-                ]).then(
-                    ret => ret || console.error('mongo: connection not established yet, continue anyway.')
-                )
+                await dbConn.connectWithTimeout(5000).catch(err => {
+                    console.error('mongo: connection not established yet, continue anyway.')
+                })
             }
 
             subscriber.on('message', async _msg => {

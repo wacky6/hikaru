@@ -74,6 +74,8 @@ function transformDanmaku(dmk) {
 }
 
 module.exports = {
+    transformDanmaku,
+
     yargs: yargs => injectDatabaseOptions(injectGlobalOptions(yargs))
         .usage('$0 dmk <room_id..>')
         .positional('room_id', {
@@ -158,12 +160,9 @@ module.exports = {
         setupSigterm()
 
         if (dbConn) {
-            await Promise.race([
-                dbConn.connect(),
-                sleep(5000)
-            ]).then(
-                ret => ret || console.error('mongo: connection not established yet, continue anyway.')
-            )
+            await dbConn.connectWithTimeout(5000).catch(err => {
+                console.error('mongo: connection not established yet, continue anyway.')
+            })
         }
 
         const shouldDeferAtStartUp = room_id.length >= 3
