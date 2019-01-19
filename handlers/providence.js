@@ -220,16 +220,28 @@ function guessRoomIdFromPath(str) {
     return m ? parseInt(m[0], 10) : null
 }
 
-function danmakuLineFilter(roomId, processPayload) {
+function DanmakuStream(file, roomId, WATERMARK=100) {
+    let fileEnd = false
+    let danmakuQueue = []
+    let resolveNextDanmaku = null
+
+    const processPayload = payload => {
+        if (resolveNextDanmaku) {
+            resolveNextDanmaku(payload)
+            resolveNextDanmaku = null
+        } else {
+            danmakuQueue.push(payload)
+            if (danmakuQueue.length > WATERMARK) {
+                rl.pause()
+            }
+        }
+    }
+
+    const rl = readline.createInterface({ input: fs.createReadStream(file) })
     const dmkHistory = new DanmakuHistory()
     const raffleFilter = new RaffleFilter(processPayload)
 
-    return line => {
-        if (line === null) {
-            raffleFilter(null)
-            return
-        }
-
+    rl.on('line', line => {
         if (!line.startsWith('DANMAKU')) {
             return
         }
@@ -259,6 +271,27 @@ function danmakuLineFilter(roomId, processPayload) {
                 processPayload(payload)
             }
         }
+    })
+
+    rl.on('close', _ => {
+        raffleFilter(null)
+        fileEnd = true
+    })
+
+    return function nextDanmaku() {
+        return new Promise(resolve => {
+            if (danmakuQueue.length) {
+                if (danmakuQueue.length < WATERMARK / 2) {
+                    rl.resume()
+                }
+                return resolve(danmakuQueue.shift())
+            }
+            if (fileEnd) {
+                return resolve(null)
+            } else {
+                return resolve(new Promise(resolve => { resolveNextDanmaku = resolve }))
+            }
+        })
     }
 }
 
@@ -301,7 +334,6 @@ module.exports = {
             sub.on('message', _msg => handleCommandMessage(dbConn, JSON.parse(_msg)))
         } else {
             // work on input files
-            const LINES_HIGHWATER_MARK = 10000
             const files = input.map(inputPath => ({
                 path: inputPath,
                 roomId: guessRoomIdFromPath(inputPath),
@@ -310,55 +342,27 @@ module.exports = {
                 (a, b) => b.size - a.size
             )
 
-            let numTotalValid = 0
             let numTotalFinished = 0
 
             await Promise.all(files.map(async ({path, roomId}) => {
-                let fileEnd = false
-                let danmakuQueue = []
+                let nextDanmaku = DanmakuStream(path, roomId)
 
-                const lineFilter = danmakuLineFilter(
-                    roomId,
-                    payload => {
-                        numTotalValid += 1
-                        if (numTotalValid > numTotalFinished + LINES_HIGHWATER_MARK) {
-                            rl.pause()
-                        }
-                        danmakuQueue.push(payload)
-                    }
-                )
-
-                const rl = readline.createInterface({ input: fs.createReadStream(path) })
-                rl.on('line', line => lineFilter(line))
-                rl.on('close', _ => {
-                    lineFilter(null)
-                    fileEnd = true
-                })
-
-                while (!fileEnd || danmakuQueue.length) {
-                    if (!danmakuQueue.length) {
-                        await sleep(10)    // sleep for short period to allow IO
-                        continue
-                    }
-                    const payload = danmakuQueue.shift()
+                while (true) {
+                    const payload = await nextDanmaku()
+                    if (!payload) break
 
                     await handleStatisticalMessage(dbConn, payload, {performApiRequests: false})
                     await handleCommandMessage(dbConn, payload, {performApiRequests: false})
 
-                    numTotalFinished += 1
-
-                    // readline flow control
-                    if (!fileEnd && numTotalValid <= numTotalFinished + LINES_HIGHWATER_MARK / 2) {
-                        rl.resume()
+                    if (++numTotalFinished % 100 === 0) {
+                        writeTtyStatLine(`  prog: ${numTotalFinished} @ ${formatBytes(process.memoryUsage().rss)}`)
                     }
 
-                    if (numTotalFinished % 100 === 0) {
-                        writeTtyStatLine(`  prog: ${numTotalFinished} / ${numTotalValid} @ ${formatBytes(process.memoryUsage().rss)}`)
-                    }
                 }
+                writeTtyStatLine(`  finish: ${path}\n`)
             }))
 
-            writeTtyStatLine(`  prog: ${numTotalFinished} / ${numTotalValid} @ ${formatBytes(process.memoryUsage().rss)}\n`)
+            writeTtyStatLine(`  prog: ${numTotalFinished} @ ${formatBytes(process.memoryUsage().rss)}\n`)
             dbConn.close()
         }
     },
