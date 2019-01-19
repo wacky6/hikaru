@@ -7,9 +7,10 @@ ENV HIKARU_DEFAULT_MONGO="mongodb://mongo/hikaru"
 USER root
 WORKDIR /root/
 
-ADD . /hikaru/
+COPY package.json yarn.lock /hikaru/
 RUN mkdir -p /root/hikaru/ && \
     apk add --no-cache curl && \
     ( cd /hikaru/ ; yarn install )
+COPY . /hikaru/
 
 ENTRYPOINT ["/hikaru/bin/hikaru"]
