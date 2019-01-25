@@ -185,6 +185,7 @@ module.exports = {
                     { _id: uid },
                     { $set: { ...roomInfo, ...userInfo },
                       $currentDate: { _lastModified: true },
+                      $setOnInsert: { _created: new Date() },
                     },
                     { upsert: true }
                 ).catch(dbConn.errorHandler)
