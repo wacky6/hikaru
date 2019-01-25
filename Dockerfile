@@ -9,7 +9,7 @@ WORKDIR /root/
 
 COPY package.json yarn.lock /hikaru/
 RUN mkdir -p /root/hikaru/ && \
-    apk add --no-cache curl && \
+    apk add --no-cache curl ffmpeg && \
     ( cd /hikaru/ ; yarn install )
 COPY . /hikaru/
 

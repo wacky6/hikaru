@@ -109,10 +109,9 @@ function getOutputPath(output, outputDir, opts = {}) {
             : resolvePath(
                 outputDir,
                 expandTemplate(output, {
-                    ... opts,
-                    date: dateformat(new Date(), 'yyyy-mm-dd'),
-                    time: Date.now(),
                     ext: 'flv',
+                    time: dateformat(new Date(), 'yyyy-mm-dd_HH-MM-ss'),
+                    ... opts,
                 })
             )
     )
@@ -145,6 +144,44 @@ async function captureStream(outputPath, canonicalRoomId) {
     }
 }
 
+async function convertContainerFormat(sourcePath, targetPath, targetFormat = 'flv') {
+    if (targetFormat === 'flv') {
+        return Promise.resolve(0)
+    }
+
+    const args = [
+        '-i',
+        sourcePath,
+        '-c:v',
+        'copy',
+        '-c:a',
+        'copy',
+        '-format',
+        targetFormat,
+        targetPath,
+    ]
+
+    return new Promise(resolve => {
+        const child = spawn('ffmpeg', args, stdio = ['ignore', 'ignore', 'pipe'])
+
+        child.once('exit', (code) => {
+            console.error('')
+            console.error(`ffmpeg exits with: ${code}`)
+            console.error('')
+
+            if (code === 0) {
+                unlink(sourcePath, err => err || console.error(`😈  删除原始flv流：${sourcePath}`))
+            } else {
+                console.error(`ffmpeg fails, keep original file`)
+            }
+
+            resolve(code)
+        })
+
+        child.stderr.pipe(process.stderr)
+    })
+}
+
 module.exports = {
     yargs: yargs => injectOutputOptions(injectGlobalOptions(yargs))
         .usage('$0 run <room_id>')
@@ -167,7 +204,8 @@ module.exports = {
             telegramEndpoint,
             telegram = null,
             silent = false,
-            noCapture = false
+            noCapture = false,
+            format = 'flv'
         } = argv
 
         const telegramOpts = { telegramEndpoint, telegram, silent }
@@ -209,8 +247,12 @@ module.exports = {
                     await sleep(LIVE_STATUS_CHECK_INTERVAL)
                 } else {
                     // capture stream
-                    const outputPath = getOutputPath(output, outputDir, { idol: name })
-                    await captureStream(outputPath, canonicalRoomId)
+                    const flvTime = dateformat(new Date(), 'yyyy-mm-dd_HH-MM-ss')
+                    const flvPath = getOutputPath(output, outputDir, { idol: name, ext: 'flv', time: flvTime })
+                    await captureStream(flvPath, canonicalRoomId)
+
+                    const outputPath = getOutputPath(output, outputDir, { idol: name, ext: format, time: flvTime })
+                    convertContainerFormat(flvPath, outputPath, format)    // asynchronously convert container format
                 }
 
                 const {

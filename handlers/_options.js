@@ -25,6 +25,12 @@ module.exports = {
             type: 'boolean',
             default: false
         })
+        .option('f', {
+            alias: 'format',
+            describe: 'specify output container format',
+            choices: ['flv', 'mp4', 'mkv'],
+            default: 'flv'
+        })
     ,
     telegram: yargs => yargs
         .option('t', {
