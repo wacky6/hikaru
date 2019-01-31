@@ -86,7 +86,7 @@ module.exports = {
             describe: 'danmaku log file, supports @roomid placeholder',
         })
         .option('r', {
-            alias: 'redundency',
+            alias: 'redundancy',
             type: 'number',
             describe: 'server dedundency, 1-2',
             default: 1,
@@ -139,7 +139,7 @@ module.exports = {
         const {
             room_id,
             logPath,
-            redundency,
+            redundancy,
             publish,
             publishUrl,
             publishName,
@@ -188,7 +188,7 @@ module.exports = {
             }, 'user')
 
             const roomLogPath = logPath && expandStringTemplate(logPath, {roomid: roomId})
-            const dmk = new HighAvailabilityDanmakuStream(roomId, { logPath: roomLogPath, redundency })
+            const dmk = new HighAvailabilityDanmakuStream(roomId, { logPath: roomLogPath, redundancy })
 
             dmk.connect()
 
