@@ -18,31 +18,55 @@ const BLANK_STREAM_FILE_SIZE_THRESHOLD = 1024
 // interval between live status checks, in milliseconds
 const LIVE_STATUS_CHECK_INTERVAL = 60 * 1000
 
-async function downloadStream(url, outputPath) {
-    const args = [
+async function downloadStream(url, outputPath, format = 'flv') {
+    const curlArgs = [
         '-L',    // follow redirect
+        '-s',    // no progress meter
         '-S',    // print error
         '-y',    // speed time, used to kill stagnated stream
-        '10',    //     10s
+        '5',     //     5s
         '-Y',    // speed limit, used to detect stagnated stream
         '10000', //     10 kB/s, estimated from basic audio stream bitrate (~128kbps -> 16kB/s)
         url,
     ]
 
-    const stream = outputPath === '-' ? process.stdout : createWriteStream(outputPath)
+    const ffmpegArgs = [
+        '-hide_banner',
+        '-i',
+        '-',
+        '-f',
+        format,
+        '-c:a',
+        'copy',
+        '-c:v',
+        'copy',
+        '-y',
+        outputPath
+    ]
 
     return new Promise(resolve => {
-        const child = spawn('curl', args, stdio = ['ignore', 'pipe', 'pipe'])
-
-        child.once('exit', (code) => {
+        const curl = spawn('curl', curlArgs, stdio = ['ignore', 'pipe', 'pipe'])
+        curl.stderr.pipe(process.stderr)
+        curl.once('exit', (code) => {
             console.error('')
             console.error(`curl exits with: ${code}`)
             console.error('')
-            resolve(code)
         })
 
-        child.stdout.pipe(stream)
-        child.stderr.pipe(process.stderr)
+        if (format === 'flv') {
+            curl.stdout.pipe(createWriteStream(outputPath))
+            curl.once('exit', (code) => resolve(code))
+        } else {
+            const ffmpeg = spawn('ffmpeg', ffmpegArgs, stdio = ['pipe', 'pipe', 'pipe'])
+            ffmpeg.stderr.pipe(process.stderr)
+            ffmpeg.once('exit', (code) => {
+                console.error('')
+                console.error(`ffmpeg exits with: ${code}`)
+                console.error('')
+                resolve(code)
+            })
+            curl.stdout.pipe(ffmpeg.stdin)
+        }
     })
 }
 
@@ -117,7 +141,7 @@ function getOutputPath(output, outputDir, opts = {}) {
     )
 }
 
-async function captureStream(outputPath, canonicalRoomId) {
+async function captureStream(outputPath, canonicalRoomId, format = 'flv') {
     const {
         quality,
         urls,
@@ -135,51 +159,13 @@ async function captureStream(outputPath, canonicalRoomId) {
     console.error(`    ${outputPath}`)
     console.error('')
 
-    await downloadStream(urls[0].url, outputPath)
+    await downloadStream(urls[0].url, outputPath, format)
 
     // nuke blank stream
     const fileSize = await getFileSize(outputPath)
     if (fileSize < BLANK_STREAM_FILE_SIZE_THRESHOLD) {
         unlink(outputPath, err => err || console.error(`😈  删除空的视频流：${outputPath}`))
     }
-}
-
-async function convertContainerFormat(sourcePath, targetPath, targetFormat = 'flv') {
-    if (targetFormat === 'flv') {
-        return Promise.resolve(0)
-    }
-
-    const args = [
-        '-i',
-        sourcePath,
-        '-c:v',
-        'copy',
-        '-c:a',
-        'copy',
-        '-format',
-        targetFormat,
-        targetPath,
-    ]
-
-    return new Promise(resolve => {
-        const child = spawn('ffmpeg', args, stdio = ['ignore', 'ignore', 'pipe'])
-
-        child.once('exit', (code) => {
-            console.error('')
-            console.error(`ffmpeg exits with: ${code}`)
-            console.error('')
-
-            if (code === 0) {
-                unlink(sourcePath, err => err || console.error(`😈  删除原始flv流：${sourcePath}`))
-            } else {
-                console.error(`ffmpeg fails, keep original file`)
-            }
-
-            resolve(code)
-        })
-
-        child.stderr.pipe(process.stderr)
-    })
 }
 
 module.exports = {
@@ -247,12 +233,12 @@ module.exports = {
                     await sleep(LIVE_STATUS_CHECK_INTERVAL)
                 } else {
                     // capture stream
-                    const flvTime = dateformat(new Date(), 'yyyy-mm-dd_HH-MM-ss')
-                    const flvPath = getOutputPath(output, outputDir, { idol: name, ext: 'flv', time: flvTime })
-                    await captureStream(flvPath, canonicalRoomId)
-
-                    const outputPath = getOutputPath(output, outputDir, { idol: name, ext: format, time: flvTime })
-                    convertContainerFormat(flvPath, outputPath, format)    // asynchronously convert container format
+                    const outputPath = getOutputPath(output, outputDir, {
+                        idol: name,
+                        ext: format || 'flv',
+                        time: dateformat(new Date(), 'yyyy-mm-dd_HH-MM-ss')
+                    })
+                    await captureStream(outputPath, canonicalRoomId, format)
                 }
 
                 const {
