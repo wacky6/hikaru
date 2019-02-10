@@ -87,12 +87,12 @@ async function sendNotification(tgOpts, messageArgs) {
         } catch(error) {
             console.error(`✉️  Telegram 消息投递失败：${error.message}`)
             return {
-                editMessageText: Promise.resolve(null)
+                editMessageText: args => Promise.resolve(null)
             }
         }
     } else {
         return {
-            editMessageText: Promise.resolve(null)
+            editMessageText: args => Promise.resolve(null)
         }
     }
 }
