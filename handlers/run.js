@@ -149,6 +149,10 @@ async function convertContainerFormat(sourcePath, targetPath, targetFormat = 'fl
         return Promise.resolve(0)
     }
 
+    if (targetFormat === 'mkv') {
+        targetFormat = 'matroska'
+    }
+
     const args = [
         '-i',
         sourcePath,
