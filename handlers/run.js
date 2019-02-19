@@ -251,7 +251,7 @@ module.exports = {
                     await sleep(LIVE_STATUS_CHECK_INTERVAL)
                 } else {
                     // capture stream
-                    const flvTime = dateformat(new Date(), 'yyyy-mm-dd_HH-MM-ss')
+                    const flvTime = dateformat(new Date(), 'yyyy-mm-dd_HHMMss')
                     const flvPath = getOutputPath(output, outputDir, { idol: name, ext: 'flv', time: flvTime })
                     await captureStream(flvPath, canonicalRoomId)
 
