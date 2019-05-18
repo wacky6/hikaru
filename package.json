@@ -7,13 +7,18 @@
   },
   "main": "exports.js",
   "scripts": {
-    "test": "tape test/*.js"
+    "test": "tape test/*.js",
+    "postinstall": "node -e 'require(`./posenet/`).fetchCheckpoints()'"
   },
   "repository": "https://github.com/wacky6/hikaru/",
   "author": "Jiewei Qian <qjw@wacky.one>",
   "license": "GPL-3.0",
   "dependencies": {
+    "@tensorflow-models/posenet": "^1.0.3",
+    "@tensorflow/tfjs-node": "^1.1.2",
     "amqplib": "^0.5.3",
+    "beamcoder": "https://github.com/wacky6/beamcoder",
+    "canvas": "^2.5.0",
     "dateformat": "^3.0.3",
     "mkdirp": "^0.5.1",
     "mongodb": "^3.1.10",
