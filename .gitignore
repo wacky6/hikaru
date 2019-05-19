@@ -4,3 +4,4 @@ node_modules
 *.tmp
 posenet/*
 !posenet/index.js
+!posenet/build-tf
