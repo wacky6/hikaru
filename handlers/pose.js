@@ -31,6 +31,26 @@ function ensureInputAndOutputStream(inputSpec, outputSpec, format = 'ndjson', di
     return [inputStream, outputStream]
 }
 
+function parseFracLike(str) {
+    const vals = str.split(',')
+    if (vals.length === 1) {
+        const pct = parseFloat(vals[0], 10)
+        if (Number.isNaN(pct) || pct >= 50) {
+            throw new Error(`sum of crop percentage must < 100, given 2x${pct} = ${2*pct}`)
+        }
+        return [pct, pct]
+    } else if (vals.length === 2) {
+        const left = parseFloat(vals[0])
+        const right = parseFloat(vals[1])
+        if (left + right >= 100 || Number.isNaN(left) || Number.isNaN(right)) {
+            throw new Error(`sum of crop percentage must < 100, given ${left} and ${right}`)
+        }
+        return [left, right]
+    } else {
+        throw new Error('At most two percentage can be specified, given ${vals.length}: ${str}')
+    }
+}
+
 module.exports = {
     yargs: yargs => yargs
         .usage('$0 pose <input> [options]')
@@ -45,10 +65,15 @@ module.exports = {
             type: 'boolean'
         })
         .option('c', {
-            alias: 'center-crop',
-            describe: 'only analyze center square region \n : improve speed for hosts without custom stages',
-            type: 'boolean',
-            default: false
+            alias: 'crop',
+            describe: `amount to crop along the long axis (left-right, top-down),
+ : improve detection for custom live stages
+ : one or two percentage numbers,
+ :   [v] -> cut [v]% off both sides
+ :   [l],[r] -> cut [l]% off left and [r]% off right
+ :   25,25 is equivlant to center crop`,
+            default: '15,15',
+            coerce: parseFracLike
         })
         .option('m', {
             alias: 'multiplier',
@@ -80,14 +105,18 @@ module.exports = {
         })
         .option('o', {
             alias: 'output',
-            describe: 'output path \n : "-" for stdout\n : default depends on input type\n :   for stdin -> stdout \n :   for file -> <filedir>/.pose/<filename>.<format>\n'
+            describe: `output path
+ : "-" for stdout
+ : default depends on input type
+ :   for stdin -> stdout
+ :   for file -> <filedir>/.pose/<filename>.<format>`
         })
     ,
     handler: async argv => {
         const {
             input,
             noBudget,
-            centerCrop,
+            crop,
             multiplier,
             resolution,
             stride,
@@ -102,16 +131,16 @@ module.exports = {
 
         console.error(`
 starting posenet:
-     multiplier: ${multiplier}
-    center-crop: ${centerCrop}
-     resolution: ${resolution}
-         stride: ${stride}
-         output: ${outputStream === process.stdout ? 'stdout' : outputStream.path}
+    multiplier: ${multiplier}
+          crop: ${crop.join(', ')}
+    resolution: ${resolution}
+        stride: ${stride}
+        output: ${outputStream === process.stdout ? 'stdout' : outputStream.path}
 `)
 
         const {
             skippedFrames
-        } = await processStream(inputStream, multiplier, centerCrop, resolution, stride, handlePosesFn)
+        } = await processStream(inputStream, multiplier, crop, resolution, stride, handlePosesFn)
 
 
         if (skippedFrames) {

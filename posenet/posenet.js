@@ -46,19 +46,6 @@ const compareByBoundingBoxSize = (a, b) => {
     return boundingB.size - boundingA.size
 }
 
-const restoreUncroppedCoordinate = (poses, cX, cY) => {
-    return poses.map(pose => ({
-        score: pose.score,
-        keypoints: pose.keypoints.map(kp => ({
-            ...kp,
-            position: {
-                x: kp.position.x - cX,
-                y: kp.position.y - cY
-            }
-        }))
-    }))
-}
-
 function createCsvHandler(stream = process.stdout) {
     // print csv header
     const partsHeader = PARTS
@@ -89,10 +76,38 @@ function createNdjsonHandler(stream = process.stdout) {
     }
 }
 
+// return width, height, startX, startY for given crop spec
+function computeAnalysisRegion(width, height, cropSpec = [15, 15]) {
+    if (width > height) {
+        const cropLeft = Math.round(cropSpec[0] / 100 * width)
+        const cropRight = Math.round(cropSpec[1] / 100 * width)
+        return [width - cropLeft - cropRight, height, cropLeft, 0]
+    } else if (width < height) {
+        const cropTop = Math.round(cropSpec[0] / 100 * height)
+        const cropBottom = Math.round(cropSpec[1] / 100 * bottom)
+        return [width, height - cropHeight - cropBottom, 0, cropTop]
+    } else {
+        return [width, height, 0, 0]
+    }
+}
+
+const restoreUncroppedCoordinate = (poses, cX, cY) => {
+    return poses.map(pose => ({
+        score: pose.score,
+        keypoints: pose.keypoints.map(kp => ({
+            ...kp,
+            position: {
+                x: kp.position.x + cX,
+                y: kp.position.y + cY
+            }
+        }))
+    }))
+}
+
 async function processStream(
     stream,
     posenetMul = 0.75,
-    centerCrop = true,
+    crop = [15, 15],
     inputResolution = 353,
     netStride = 16,
     handlePoses = createCsvHandler()
@@ -146,16 +161,10 @@ async function processStream(
     const pnet = await loadPoseNet(posenetMul)
 
     // determine crop and translation
-    const vMin = Math.min(width, height)
-    const [
-        cW, cH, cX, cY
-    ] = centerCrop
-      ? [vMin, vMin, Math.floor((vMin - width) / 2), Math.floor((vMin - height) / 2)]
-      : [width, height, 0, 0]
-
+    const [cW, cH, cX, cY] = computeAnalysisRegion(width, height, crop)
     const canvas = createCanvas(cW, cH)
     const ctx = canvas.getContext('2d')
-    const scale = Math.min(1, Math.max(0.2, inputResolution / vMin))  // posenet scale
+    const scale = Math.min(1, Math.max(0.2, inputResolution / Math.max(cW, cH)))  // posenet scale
 
     // create processing budget,
     // if stream is realtime (i.e. stdin) must not apply backpressure,
@@ -181,7 +190,7 @@ async function processStream(
             const buf = rgbFrame.data[0]
             const bufLen = width * height * 4
             const u8 = new Uint8ClampedArray(buf, 0, bufLen)
-            ctx.putImageData(createImageData(u8, width), cX, cY)
+            ctx.putImageData(createImageData(u8, width), -cX, -cY)
 
             const poses = await pnet.estimateMultiplePoses(canvas, scale, false, netStride)
             const truePoses = restoreUncroppedCoordinate(poses, cX, cY)

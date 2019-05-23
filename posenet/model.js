@@ -1,4 +1,3 @@
-const tfjs = require('@tensorflow/tfjs-node')
 const fs = require('fs')
 const mkdirp = require('mkdirp')
 const https = require('https')
@@ -9,6 +8,9 @@ const CHECKPOINT_DIRS = [
     'mobilenet_v1_101/', 'mobilenet_v1_100/', 'mobilenet_v1_075/',
     'mobilenet_v1_050/'
 ]
+
+// defer import
+let tfjs
 
 const downloadUrlToPath = (url, localPath) => new Promise((resolve, reject) => {
     https.get(url, res => {
@@ -111,6 +113,7 @@ class LocalModelWeights {
 }
 
 async function localLoad(multiplier = 0.75) {
+    tfjs = require('@tensorflow/tfjs-node')
     const {checkpoints, MobileNet, PoseNet} = require('@tensorflow-models/posenet')
     const checkpoint = checkpoints[multiplier]
     const checkpointLoader = new LocalCheckpointLoader(checkpoint.url)
