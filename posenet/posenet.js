@@ -59,12 +59,12 @@ const restoreUncroppedCoordinate = (poses, cX, cY) => {
     }))
 }
 
-function createStdoutCsvHandler() {
+function createCsvHandler(stream = process.stdout) {
     // print csv header
     const partsHeader = PARTS
-    .map(partName => [partName, partName+'X', partName+'Y'])
-    .reduce((ret, arr) => [...ret, ...arr], [])
-    process.stdout.write(`pts,${partsHeader}\n`)
+        .map(partName => [partName, partName+'X', partName+'Y'])
+        .reduce((ret, arr) => [...ret, ...arr], [])
+        stream.write(`pts,${partsHeader}\n`)
 
     return async function csvPoseHandler(poses, rgbFrame, pts) {
         const picked = poses.sort(compareByBoundingBoxSize)[0]
@@ -74,7 +74,18 @@ function createStdoutCsvHandler() {
             .map(kp => [kp.score, kp.position.x, kp.position.y].map(float => float.toFixed(2)))
             .reduce((ret, arr) => [...ret, ...arr], [])
 
-        process.stdout.write(`${pts.toFixed(3)},${partLine}\n`)
+        stream.write(`${pts.toFixed(3)},${partLine}\n`)
+    }
+}
+
+function createNdjsonHandler(stream = process.stdout) {
+    return async function(poses, rgbFrame, pts) {
+        const out = {
+            pts,
+            poses
+        }
+        stream.write(JSON.stringify(out))
+        stream.write('\n')
     }
 }
 
@@ -84,7 +95,7 @@ async function processStream(
     centerCrop = true,
     inputResolution = 353,
     netStride = 16,
-    handlePoses = createStdoutCsvHandler()
+    handlePoses = createCsvHandler()
 ) {
     // realtime stream's watermark should be sufficient to store data during processing time
     // fs stream's watermark should be large enough to keep posenet busy (never wait for next intra-frame)
@@ -192,6 +203,10 @@ async function processStream(
 
     const { frames: decoded } = await decoder.flush()
     await handleDecodedFrames(decoded.frames)
+
+    return {
+        skippedFrames: budget.skippedFrames()
+    }
 }
 
 async function processFile(file, ...rest) {
@@ -201,5 +216,7 @@ async function processFile(file, ...rest) {
 
 module.exports = {
     processFile,
-    processStream
+    processStream,
+    createCsvHandler,
+    createNdjsonHandler,
 }
