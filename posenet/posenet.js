@@ -1,7 +1,7 @@
 const { createCanvas, createImageData } = require('canvas')
 const beamcoder = require('beamcoder')
-const { load: loadPoseNet } = require('./posenet/')
-const { createBudgetForStream, isRealtimeStream } = require('./lib/stream-budget')
+const { load: loadPoseNet } = require('./model')
+const { createBudgetForStream, isRealtimeStream } = require('../lib/stream-budget')
 
 /* <DONE>, see posenet/posenet_local
  * posenet dist needs patch, in order to:
