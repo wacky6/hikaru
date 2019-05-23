@@ -1,6 +1,7 @@
 const { createCanvas, createImageData } = require('canvas')
 const beamcoder = require('beamcoder')
 const { load: loadPoseNet } = require('./posenet/')
+const { createBudgetForStream, isRealtimeStream } = require('./lib/stream-budget')
 
 /* <DONE>, see posenet/posenet_local
  * posenet dist needs patch, in order to:
@@ -45,16 +46,60 @@ const compareByBoundingBoxSize = (a, b) => {
     return boundingB.size - boundingA.size
 }
 
-async function processFile(file, posenetMul = 0.75, centerCrop = true, netSize = 360, netStride = 16) {
+const restoreUncroppedCoordinate = (poses, cX, cY) => {
+    return poses.map(pose => ({
+        score: pose.score,
+        keypoints: pose.keypoints.map(kp => ({
+            ...kp,
+            position: {
+                x: kp.position.x - cX,
+                y: kp.position.y - cY
+            }
+        }))
+    }))
+}
+
+function createStdoutCsvHandler() {
+    // print csv header
+    const partsHeader = PARTS
+    .map(partName => [partName, partName+'X', partName+'Y'])
+    .reduce((ret, arr) => [...ret, ...arr], [])
+    process.stdout.write(`pts,${partsHeader}\n`)
+
+    return async function csvPoseHandler(poses, rgbFrame, pts) {
+        const picked = poses.sort(compareByBoundingBoxSize)[0]
+        if (!picked) return
+
+        const partLine = picked.keypoints
+            .map(kp => [kp.score, kp.position.x, kp.position.y].map(float => float.toFixed(2)))
+            .reduce((ret, arr) => [...ret, ...arr], [])
+
+        process.stdout.write(`${pts.toFixed(3)},${partLine}\n`)
+    }
+}
+
+async function processStream(
+    stream,
+    posenetMul = 0.75,
+    centerCrop = true,
+    inputResolution = 353,
+    netStride = 16,
+    handlePoses = createStdoutCsvHandler()
+) {
+    // realtime stream's watermark should be sufficient to store data during processing time
+    // fs stream's watermark should be large enough to keep posenet busy (never wait for next intra-frame)
+    const streamWatermark = isRealtimeStream(stream) ? 8*1024*1024 : 32*1024*1024
+
     // demux and get meta info
-    // TODO: demuxer should be changed to pipe (real time processing during capture)
-    const demux = await beamcoder.demuxer(file)
+    const demuxStream = await beamcoder.demuxerStream({ highwaterMark: streamWatermark })
+    stream.pipe(demuxStream)
+
+    const demux = await demuxStream.demuxer()
+
     const vs = demux.streams.find(s => s.codecpar.codec_type === 'video')
     if (!vs) {
-        console.error('Can not find video stream.')
+        console.error('posenet: can not find video stream.')
         return
-    } else {
-        console.error(`File opened: ${file}`)
     }
 
     const videoStreamIndex = vs.index
@@ -99,7 +144,13 @@ async function processFile(file, posenetMul = 0.75, centerCrop = true, netSize =
 
     const canvas = createCanvas(cW, cH)
     const ctx = canvas.getContext('2d')
-    const scale = Math.min(1, Math.max(0.2, netSize / vMin))  // posenet scale
+    const scale = Math.min(1, Math.max(0.2, inputResolution / vMin))  // posenet scale
+
+    // create processing budget,
+    // if stream is realtime (i.e. stdin) must not apply backpressure,
+    // otherwise upstream capture process might stall
+    // budget decides whether a frame is skipped
+    const budget = createBudgetForStream(stream)
 
     async function handleDecodedFrames(frames) {
         if (!frames || frames.length === 0) return
@@ -108,46 +159,26 @@ async function processFile(file, posenetMul = 0.75, centerCrop = true, netSize =
         for (let rgbFrame of filtResult[0].frames) {
             const pts = rgbFrame.pts / vs.time_base[1] * vs.time_base[0] - videoStartTime
 
-            const timeStart = Date.now()
+            if (budget.shouldSkipPts(pts)) {
+                console.error(`Skipping pts ${pts} due to insufficient budget, ${budget.budgetRequired.toFixed(2)}ms required.`)
+                budget.markSkippedPts(pts)
+                continue
+            }
+
+            budget.markProcessStartForPts(pts)
 
             const buf = rgbFrame.data[0]
             const bufLen = width * height * 4
             const u8 = new Uint8ClampedArray(buf, 0, bufLen)
             ctx.putImageData(createImageData(u8, width), cX, cY)
-            const estimated = await pnet.estimateMultiplePoses(canvas, scale, false, netStride)
-            const picked = estimated.sort(compareByBoundingBoxSize)[0]
 
-            if (!picked) continue
+            const poses = await pnet.estimateMultiplePoses(canvas, scale, false, netStride)
+            const truePoses = restoreUncroppedCoordinate(poses, cX, cY)
+            await handlePoses(truePoses, rgbFrame, pts)
 
-            // restore centerCrop's translation on coordinates
-            const estimation = {
-                score: picked.score,
-                keypoints: picked.keypoints.map(kp => ({
-                    ...kp,
-                    position: {
-                        x: kp.position.x - cX,
-                        y: kp.position.y - cY
-                    }
-                }))
-            }
-            const elapsedMs = Date.now() - timeStart
-
-            const partLine = estimation.keypoints
-                .map(kp => [kp.score, kp.position.x, kp.position.y].map(float => float.toFixed(2)))
-                .reduce((ret, arr) => [...ret, ...arr], [])
-
-            process.stdout.write(`${pts.toFixed(3)},${elapsedMs},${partLine}\n`)
-
-            const bbox = getBoundingBox(picked)
-            console.error(`${pts.toFixed(3)},${elapsedMs},${bbox.centerX.toFixed(2)},${bbox.centerY.toFixed(2)},${Math.sqrt(bbox.size).toFixed(2)}`)
+            budget.markProcessEndForPts(pts)
         }
     }
-
-    // print csv header
-    const partsHeader = PARTS
-        .map(partName => [partName, partName+'X', partName+'Y'])
-        .reduce((ret, arr) => [...ret, ...arr], [])
-    process.stdout.write(`pts,ptime,${partsHeader}\n`)
 
     let packet = null
     while (packet = await demux.read()) {
@@ -163,6 +194,12 @@ async function processFile(file, posenetMul = 0.75, centerCrop = true, netSize =
     await handleDecodedFrames(decoded.frames)
 }
 
+async function processFile(file, ...rest) {
+    const readStream = fs.createReadStream(file)
+    return processStream(readStream, ...rest)
+}
+
 module.exports = {
-    processFile
+    processFile,
+    processStream
 }
