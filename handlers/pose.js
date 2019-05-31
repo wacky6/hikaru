@@ -51,7 +51,21 @@ function parseFracLike(str) {
     }
 }
 
+function wrapProgressIndicator(fn) {
+    let colPos = 0
+    return (...args) => {
+        const maxCols = process.stdout.isTTY ? Math.max(1, process.stdout.columns - 1) : -1
+        process.stderr.write('.')
+        if (++colPos === maxCols) {
+            process.stderr.write('\n')
+            colPos = 0
+        }
+        return fn(...args)
+    }
+}
+
 module.exports = {
+    getDefaultOutputPath,
     yargs: yargs => yargs
         .usage('$0 pose <input> [options]')
         .positional('input', {
@@ -111,6 +125,12 @@ module.exports = {
  :   for stdin -> stdout
  :   for file -> <filedir>/.pose/<filename>.<format>`
         })
+        .option('p', {
+            alias: 'progress',
+            describe: 'print progress dot to stderr',
+            type: 'boolean',
+            default: false
+        })
     ,
     handler: async argv => {
         const {
@@ -121,7 +141,8 @@ module.exports = {
             resolution,
             stride,
             format,
-            output
+            output,
+            progress
         } = argv
 
         const [ inputStream, outputStream ] = ensureInputAndOutputStream(input, output, format, noBudget)
@@ -138,15 +159,21 @@ starting posenet:
         output: ${outputStream === process.stdout ? 'stdout' : outputStream.path}
 `)
 
+        const frameHandler = progress ? wrapProgressIndicator(handlePosesFn) : handlePosesFn
+
         const {
             skippedFrames
-        } = await processStream(inputStream, multiplier, crop, resolution, stride, handlePosesFn)
+        } = await processStream(inputStream, multiplier, crop, resolution, stride, frameHandler)
 
+        // if progress is enabled, terminate progression dots
+        if (progress) {
+            process.stderr.write('\n')
+        }
 
         if (skippedFrames) {
-            console.error(`done. ${skippedFrames} frames were skipped.`)
+            console.error(`analyze complete. ${skippedFrames} frames were skipped.`)
         } else {
-            console.error(`done.`)
+            console.error(`analyze complete.`)
         }
     }
 }

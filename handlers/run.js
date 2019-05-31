@@ -1,10 +1,14 @@
-const { global: injectGlobalOptions, output: injectOutputOptions } = require('./_options')
+const {
+    injectOptions,
+    global: globalOpts,
+    output: outputOpts,
+    extract: extractOpts
+} = require('./_options')
 const { parseRoom } = require('../lib/parser')
 const { getRoomInfo, getRoomUser, getPlayUrls } = require('../lib/bili-api')
 const { spawn } = require('child_process')
-const { createWriteStream, resolvePath, getFileSize } = require('../lib/fs')
+const { createWriteStream, getFileSize, getOutputPath } = require('../lib/fs')
 const { unlink } = require('fs')
-const expandTemplate = require('../lib/string-template')
 const dateformat = require('dateformat')
 const { resolve: resolveUrl } = require('url')
 const { sendMessage, editMessageText } = require('../lib/telegram-api')
@@ -102,21 +106,6 @@ function formatTimeDuration(secs) {
     return dateformat(date, 'UTC:HH:MM:ss')
 }
 
-function getOutputPath(output, outputDir, opts = {}) {
-    return (
-        output === '-'
-            ? '-'
-            : resolvePath(
-                outputDir,
-                expandTemplate(output, {
-                    ext: 'flv',
-                    time: dateformat(new Date(), 'yyyy-mm-dd_HH-MM-ss'),
-                    ... opts,
-                })
-            )
-    )
-}
-
 async function captureStream(outputPath, canonicalRoomId) {
     const {
         quality,
@@ -156,9 +145,7 @@ async function convertContainerFormat(sourcePath, targetPath, targetFormat = 'fl
     const args = [
         '-i',
         sourcePath,
-        '-c:v',
-        'copy',
-        '-c:a',
+        '-c',
         'copy',
         '-format',
         targetFormat,
@@ -187,7 +174,7 @@ async function convertContainerFormat(sourcePath, targetPath, targetFormat = 'fl
 }
 
 module.exports = {
-    yargs: yargs => injectOutputOptions(injectGlobalOptions(yargs))
+    yargs: yargs => injectOptions(yargs, globalOpts, outputOpts, extractOpts)
         .usage('$0 run <room_id>')
         .positional('room_id', {
             describe: 'room id or live url',
