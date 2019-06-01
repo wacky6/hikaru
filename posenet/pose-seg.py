@@ -55,7 +55,7 @@ def seg_pose(csvpath, dump):
     MIN_SEGMENT_LENGTH = 30
     EXPAND_SEGMENT_LENGTH = 9
     MED_WND = 9
-
+    MAX_SEGMENTS_PER_HOUR = 8
 
     # read csv
     df = dict()
@@ -149,6 +149,13 @@ def seg_pose(csvpath, dump):
         if cur_start and not decision[i]:
             segments.append((cur_start, t[i]))
             cur_start = None
+
+    if len(segments) > (np.max(t) - np.min(t)) / 3600 * MAX_SEGMENTS_PER_HOUR:
+        print(f'Too many segments, possibly wrong type. {csvpath}', file=sys.stderr)
+        print(f'Ignoring all segments for automatic extraction.', file=sys.stderr)
+        for start_t, end_t in segments:
+            print(f'    {{"start_t": {round(start_t, 3)}, "end_t": {round(end_t, 3)}}}', file=sys.stderr)
+        segments = []
 
     for start_t, end_t in segments:
         print(f'{{"start_t": {round(start_t, 3)}, "end_t": {round(end_t, 3)}}}')
