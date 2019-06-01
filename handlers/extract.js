@@ -114,6 +114,7 @@ async function extractMediaSegmentTo(media, start, end, format, outputPath) {
     })[format]
     return new Promise(resolve => {
         const args = [
+            '-hide_banner',
             '-ss',
             String(start),
             '-i',

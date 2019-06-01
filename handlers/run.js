@@ -219,6 +219,7 @@ async function convertContainerFormat(sourcePath, targetPath, targetFormat = 'fl
     }
 
     const args = [
+        '-hide_banner',
         '-i',
         sourcePath,
         '-c',
