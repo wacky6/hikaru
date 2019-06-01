@@ -13,9 +13,10 @@ module.exports = {
         .option('x', {
             alias: 'extract',
             describe: `enable extraction
- : takes an optional parameter as extraction type
+ : takes an parameter as extraction type
  : supports: ${Object.keys(ANALYSIS_BACKENDS).join(', ')}
  : default: [none]`,
+            nargs: 1,
             default: ''
         })
         .option('X', {

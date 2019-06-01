@@ -25,6 +25,11 @@ module.exports = {
         })
     ,
     handler: async argv => {
+        if (argv.extract && (argv.output === '-' || argv.output === '')) {
+            console.error(`--extract can not work with stdout output`)
+            process.exit(1)
+        }
+
         setupSigterm()
         while (true) {
             const ret = await RUN.handler({
