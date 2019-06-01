@@ -1,7 +1,8 @@
 const { createCanvas, createImageData } = require('canvas')
 const beamcoder = require('beamcoder')
 const { load: loadPoseNet } = require('./model')
-const { createBudgetForStream, isRealtimeStream } = require('../lib/stream-budget')
+const { createBudgetForStream, isRealtimeStream, BudgetForFile } = require('../lib/stream-budget')
+const { Readable, Duplex, Transform } = require('stream')
 
 /* <DONE>, see posenet/posenet_local
  * posenet dist needs patch, in order to:
@@ -104,23 +105,32 @@ const restoreUncroppedCoordinate = (poses, cX, cY) => {
     }))
 }
 
-async function processStream(
-    stream,
+async function createDemuxFromStream(readStream) {
+    // realtime stream's watermark should be sufficient to store data during processing time
+    // fs stream should have larger buffer to keep demuxer busy (never wait for next i-frame)
+    const streamWatermark = isRealtimeStream(readStream) ? 8*1024*1024 : 32*1024*1024
+
+    // demux and get meta info
+    const demuxStream = await beamcoder.demuxerStream({ highwaterMark: streamWatermark })
+    readStream.pipe(demuxStream)
+
+    return await demuxStream.demuxer()
+}
+
+async function createDemuxFromFile(fileSpec) {
+    return await beamcoder.demuxer(fileSpec)
+}
+
+async function processMedia(
+    streamOrPath,
     posenetMul = 0.75,
     crop = [15, 15],
     inputResolution = 353,
     netStride = 16,
     handlePoses = createCsvHandler()
 ) {
-    // realtime stream's watermark should be sufficient to store data during processing time
-    // fs stream's watermark should be large enough to keep posenet busy (never wait for next intra-frame)
-    const streamWatermark = isRealtimeStream(stream) ? 8*1024*1024 : 32*1024*1024
-
-    // demux and get meta info
-    const demuxStream = await beamcoder.demuxerStream({ highwaterMark: streamWatermark })
-    stream.pipe(demuxStream)
-
-    const demux = await demuxStream.demuxer()
+    const inputIsStream = streamOrPath instanceof Readable || streamOrPath instanceof Duplex || streamOrPath instanceof Transform
+    const demux = await (inputIsStream ? createDemuxFromStream(streamOrPath) : createDemuxFromFile(streamOrPath))
 
     const vs = demux.streams.find(s => s.codecpar.codec_type === 'video')
     if (!vs) {
@@ -141,6 +151,15 @@ async function processStream(
         stream_index: videoStreamIndex,
         skip_frame: 'nonkey'
     })
+
+    if (!inputPixelFormat) {
+        console.error(`posenet: can not probe pixel format`)
+        return {
+            success: false,
+            error: 'can not setup decoding filter',
+            skippedFrames: null
+        }
+    }
 
     const vfilt = await beamcoder.filterer({
         filterType: 'video',
@@ -170,7 +189,7 @@ async function processStream(
     // if stream is realtime (i.e. stdin) must not apply backpressure,
     // otherwise upstream capture process might stall
     // budget decides whether a frame is skipped
-    const budget = createBudgetForStream(stream)
+    const budget = inputIsStream ? createBudgetForStream(streamOrPath) : new BudgetForFile()
 
     async function handleDecodedFrames(frames) {
         if (!frames || frames.length === 0) return
@@ -214,18 +233,14 @@ async function processStream(
     await handleDecodedFrames(decoded.frames)
 
     return {
+        success: true,
+        error: '',
         skippedFrames: budget.skippedFrames()
     }
 }
 
-async function processFile(file, ...rest) {
-    const readStream = fs.createReadStream(file)
-    return processStream(readStream, ...rest)
-}
-
 module.exports = {
-    processFile,
-    processStream,
+    processMedia,
     createCsvHandler,
     createNdjsonHandler,
 }

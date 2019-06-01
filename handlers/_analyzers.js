@@ -14,6 +14,7 @@ module.exports = {
                 '-',
                 '-o',
                 '-',
+                '-p',
                 ...parseArgsStringToArgv(args || '')
             ], {
                 stdio: [ mediaReadStream, 'pipe', 'pipe' ]

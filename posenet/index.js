@@ -1,11 +1,10 @@
 const { fetchCheckpoints, load } = require('./model')
-const { processFile, processStream, createCsvHandler, createNdjsonHandler } = require('./posenet')
+const { processMedia, createCsvHandler, createNdjsonHandler } = require('./posenet')
 
 module.exports = {
     fetchCheckpoints,
     load,
-    processFile,
-    processStream,
+    processMedia,
     createCsvHandler,
     createNdjsonHandler
 }

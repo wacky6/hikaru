@@ -6,7 +6,9 @@ const OUTPUT_FORMAT_SELECTIONS = ['csv', 'ndjson']
 const mkdirp = require('mkdirp')
 const fs = require('fs')
 const {dirname, basename, extname, resolve, join} = require('path')
-const {processStream, createCsvHandler, createNdjsonHandler } = require('../posenet')
+const {processMedia, createCsvHandler, createNdjsonHandler} = require('../posenet')
+const {Readable, Duplex, Transform} = require('stream')
+const {isRealtimeStream} = require('../lib/stream-budget')
 
 function getDefaultOutputPath(inputPath, format = 'ndjson') {
     if (inputPath === '-' || inputPath === '') {    // hack for yargs's option dash parsing
@@ -18,8 +20,8 @@ function getDefaultOutputPath(inputPath, format = 'ndjson') {
     }
 }
 
-function ensureInputAndOutputStream(inputSpec, outputSpec, format = 'ndjson', disableBudget = false) {
-    const inputStream = inputSpec === '-' || inputSpec === '' ? process.stdin : fs.createReadStream(inputSpec)
+function ensureInputAndOutput(inputSpec, outputSpec, format = 'ndjson', disableBudget = false) {
+    const inputStreamOrPath = inputSpec === '-' || inputSpec === '' ? process.stdin : inputSpec
     if (disableBudget && inputStream === process.stdin) {
         inputStream.path = 'pipe:stdin'
     }
@@ -28,7 +30,7 @@ function ensureInputAndOutputStream(inputSpec, outputSpec, format = 'ndjson', di
         mkdirp.sync(dirname(outputPath))
     }
     const outputStream = outputPath === '-' ? process.stdout : fs.createWriteStream(outputPath)
-    return [inputStream, outputStream]
+    return [inputStreamOrPath, outputStream]
 }
 
 function parseFracLike(str) {
@@ -145,35 +147,58 @@ module.exports = {
             progress
         } = argv
 
-        const [ inputStream, outputStream ] = ensureInputAndOutputStream(input, output, format, noBudget)
+        const [ inputStreamOrPath, outputStream ] = ensureInputAndOutput(input, output, format, noBudget)
         const handlePosesFn = format === 'csv' ? createCsvHandler(outputStream)
                             : format === 'ndjson' ? createNdjsonHandler(outputStream)
                             : () => null
 
+        const inputIsStream = [Readable, Duplex, Transform].find(t => inputStreamOrPath instanceof t)
+        const inputDescriptor = (
+            inputIsStream
+            ? isRealtimeStream(inputStreamOrPath)
+                ? `stream:1`
+                : `fs_stream:${inputStreamOrPath.path}>`
+            : `file:${inputStreamOrPath}`
+        )
+        const outputDescriptor = (
+            outputStream === process.stdout
+            ? 'pipe:stdout'
+            : `file:${outputStream.path}`
+        )
+
         console.error(`
 starting posenet:
+         input: ${inputDescriptor}
     multiplier: ${multiplier}
           crop: ${crop.join(', ')}
     resolution: ${resolution}
         stride: ${stride}
-        output: ${outputStream === process.stdout ? 'stdout' : outputStream.path}
+        output: ${outputDescriptor}
 `)
 
         const frameHandler = progress ? wrapProgressIndicator(handlePosesFn) : handlePosesFn
 
         const {
+            success,
+            error,
             skippedFrames
-        } = await processStream(inputStream, multiplier, crop, resolution, stride, frameHandler)
+        } = await processMedia(inputStreamOrPath, multiplier, crop, resolution, stride, frameHandler)
 
         // if progress is enabled, terminate progression dots
         if (progress) {
             process.stderr.write('\n')
         }
 
-        if (skippedFrames) {
-            console.error(`analyze complete. ${skippedFrames} frames were skipped.`)
+        if (success) {
+            if (skippedFrames) {
+                console.error(`analyze complete. ${skippedFrames} frames were skipped.`)
+            } else {
+                console.error(`analyze complete.`)
+            }
+            process.exit(0)
         } else {
-            console.error(`analyze complete.`)
+            console.error(`analyze failed, error: ${error}`)
+            process.exit(1)
         }
     }
 }

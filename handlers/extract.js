@@ -35,7 +35,8 @@ const toDurationSpec = sec => {
 
 // return Promise -> analyzerResultPath
 async function ensureAnalyzerResult({
-    media,
+    stream = null,
+    mediaPath,
     analyzerResultSpec,
     type,
     fresh = false,
@@ -43,12 +44,13 @@ async function ensureAnalyzerResult({
     persistResult = false
 }) {
     const {
+        analyzeStream,
         analyzeFile,
         getDefaultAnalyzeResultPath,
     } = ANALYZERS[type]
 
     // if analyzerResult exists, reuse it
-    const analyzerResultPathToProbe = analyzerResultSpec ? analyzerResultSpec : getDefaultAnalyzeResultPath(media)
+    const analyzerResultPathToProbe = analyzerResultSpec ? analyzerResultSpec : getDefaultAnalyzeResultPath(mediaPath)
     const analyzerResultExists = !fresh && analyzerResultPathToProbe && await fileExists(analyzerResultPathToProbe)
     if (analyzerResultExists) {
         console.error(`Reuse analyze result: ${analyzerResultPathToProbe}`)
@@ -59,7 +61,7 @@ async function ensureAnalyzerResult({
     const analyzerResultPath = persistResult
         ? typeof persistResult === 'string'
           ? persistResult
-          : getDefaultAnalyzeResultPath(media)
+          : getDefaultAnalyzeResultPath(mediaPath)
         : await mktemp.createFile(join(os.tmpdir(), `hikaru-analyze-${type}-XXXXX`))
 
     if (persistResult) {
@@ -74,7 +76,7 @@ async function ensureAnalyzerResult({
         errorStream,
         onFinish,
         _childProcess
-    } = analyzeFile(media, analyzerArgs)
+    } = stream ? analyzeStream(stream, analyzerArgs) : analyzeFile(mediaPath, analyzerArgs)
 
     resultStream.pipe(analyzerResultStream)
     errorStream.pipe(process.stderr)
@@ -94,12 +96,14 @@ async function ensureAnalyzerResult({
     process.on('exit', cleanupPartialResult)
     process.on('SIGINT', cleanupPartialResult)
     process.on('SIGTERM', cleanupPartialResult)
-    await onFinish
+
+    const analyzerExitCode = await onFinish
+
     process.off('SIGTERM', cleanupPartialResult)
     process.off('SIGINT', cleanupPartialResult)
     process.off('exit', cleanupPartialResult)
 
-    return analyzerResultPath
+    return analyzerExitCode === 0 ? analyzerResultPath : null
 }
 
 // return ffmpeg exit code
@@ -126,6 +130,10 @@ async function extractMediaSegmentTo(media, start, end, format, outputPath) {
         const child = spawn('ffmpeg', args, stdio = ['ignore', 'ignore', 'ignore'])
         child.once('exit', (code) => { resolve(code) })
     })
+}
+
+function mediaSpecIsStdin(media) {
+    return media === '-' || media === ''
 }
 
 module.exports = {
@@ -193,9 +201,14 @@ module.exports = {
         })
         .option('F', {
             alias: 'fresh',
-            describe: 'always do a fresh analysis',
+            describe: 'perform fresh analysis, implied when media is stdin',
             type: 'boolean',
             default: false
+        })
+        .option('R', {
+            alias: 'ref-path',
+            describe: 'reference path when media is stdin',
+            type: 'string',
         })
     ,
     handler: async argv => {
@@ -209,19 +222,33 @@ module.exports = {
             segmentationArgs,
             outputDir: _outputDir,
             output,
-            format
+            format,
+            refPath,
         } = argv
 
-        const outputDir = resolvePath(expandTemplate(_outputDir, { basedir: dirname(resolve(process.cwd(), media)) }))
+        // if media is stdin, refPath must be provided
+        if (mediaSpecIsStdin(media) && !refPath) {
+            console.error(`when using stdin as media, --ref-path must be provided.`)
+            process.exit(1)
+        }
+
+        const mediaPath = mediaSpecIsStdin(media) ? refPath : media
+        const outputDir = resolvePath(expandTemplate(_outputDir, { basedir: dirname(resolve(process.cwd(), mediaPath)) }))
 
         const analyzeResultPath = await ensureAnalyzerResult({
-            media,
+            stream: mediaSpecIsStdin(media) ? process.stdin : null,
+            mediaPath,
             analyzerResultSpec: analyzerResult,
             type,
-            fresh,
+            fresh: mediaSpecIsStdin(media) ? true : fresh,
             analyzerArgs,
-            persistResult
+            persistResult,
         })
+
+        if (!analyzeResultPath) {
+            console.error(`\nAnalyzer failed, will not extract.`)
+            process.exit(1)
+        }
 
         const { segments } = await ANALYZERS[type].segmentFile(analyzeResultPath, segmentationArgs)
 
@@ -235,7 +262,7 @@ module.exports = {
             console.error(`  dur:    ${toDurationSpec(end-start)}`)
 
             const outputPath = getOutputPath(output, outputDir, {
-                base: basename(media, extname(media)),
+                base: basename(mediaPath, extname(mediaPath)),
                 seq,
                 ext: format
             })
@@ -248,7 +275,7 @@ module.exports = {
             ensureDir(outputPath)
             console.error(`  dest:   ${outputPath}`)
 
-            const code = await extractMediaSegmentTo(media, start, end, format, outputPath)
+            const code = await extractMediaSegmentTo(mediaPath, start, end, format, outputPath)
             if (code === 0) {
                 console.log(`  -> ok`)
             } else {
