@@ -1,10 +1,14 @@
-const { dirname, resolve: pathResolve } = require('path')
+const { dirname, basename, extname } = require('path')
+const { resolvePath, getOutputPath } = require('../lib/fs')
 const { spawn, execFile } = require('child_process')
 const { parseArgsStringToArgv } = require('string-argv')
 
 const NODE_EXEC = process.execPath
-const HIKARU_EXEC = pathResolve(__dirname, '../bin/hikaru')
+const HIKARU_EXEC = resolvePath(__dirname, '../bin/hikaru')
 
+/*
+ * see ./extract.js for interface requirements
+ */
 module.exports = {
     'dance': {
         analyzeStream: (mediaReadStream, args) => {
@@ -45,13 +49,18 @@ module.exports = {
                 _childProcess: analyzer
             }
         },
-        segmentFile: (analyzeResultPath, args) => new Promise((resolve, reject) => {
+        segmentFile: (analyzeResultPath, args, verboseBasepath) => new Promise((resolve, reject) => {
             let exitCode = null
             execFile('/usr/bin/env', [
                 'python3',
-                pathResolve(dirname(HIKARU_EXEC), '../posenet/pose-seg.py'),
+                resolvePath(dirname(HIKARU_EXEC), '../posenet/pose-seg.py'),
                 analyzeResultPath,
-                ...parseArgsStringToArgv(args || '')
+                ...parseArgsStringToArgv(args || ''),
+                ...(
+                    verboseBasepath
+                    ? ['-d', verboseBasepath]
+                    : []
+                )
             ], {
                 encoding: 'utf8',
                 maxBuffer: 8 * 1024 * 1024

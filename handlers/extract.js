@@ -13,9 +13,12 @@ const ANALYZERS = require('./_analyzers')
  * Each backend supports the following methods:
  *   analyzeStream(mediaStream, argStr) => { resultStream, errorStream, onFinish (Promise) }
  *   analyzeFile(mediaPath, argStr) => { resultStream, errorStream, onFinish (Promise) }
- *   segmentFile(analyzeResultPath, argStr) => Promise:
- *       resolves to { segments: [startTime, endTime], allOk: boolean }
- *       or, rejects to an error
+ *   segmentFile(analyzeResultPath, argStr, verboseBasepath) => Promise:
+ *       resolves to { segments: [startTime, endTime], allOk: boolean }, or rejects with an error
+ *       verboseBasepath: if provided, save segmentation analysis
+ *                        should not contain extname, segmentation tool will append it
+ *                        (analyzer may not support this)
+ *
  *   getDefaultAnalyzeResultPath(mediaPath) => path to analyze result, or null
  */
 
@@ -172,6 +175,17 @@ module.exports = {
  : if path is not provided, save to analyzer default
  : ignored when -a / --analyzer-result is valid`
         })
+        .option('d', {
+            alias: 'dump-segmentation',
+            describe: `dump segmentation analysis
+ : optionally, take a basepath as argument
+ : do not include file extension name
+ : segmenter will add appropriate extension
+ : basepath defaults to @outdir/@base
+ : supports @var template,
+ : @outdir  -> output dir (--output-dir argument)
+ : @base    -> media's base name (without extension)`,
+        })
         .option('S', {
             alias: 'segmentation-args',
             describe: `additional args for segmenration tool`,
@@ -221,6 +235,7 @@ module.exports = {
             analyzerArgs,
             persistResult,
             segmentationArgs,
+            dumpSegmentation,
             outputDir: _outputDir,
             output,
             format,
@@ -251,7 +266,22 @@ module.exports = {
             process.exit(1)
         }
 
-        const { segments } = await ANALYZERS[type].segmentFile(analyzeResultPath, segmentationArgs)
+        const mediaBase = basename(mediaPath, extname(mediaPath))
+
+        const verboseBasepath = (
+            dumpSegmentation
+                ? getOutputPath(
+                    typeof dumpSegmentation === 'string' ? dumpSegmentation : '@outdir/@base',
+                    '.',
+                    {
+                        outdir: outputDir,
+                        base: mediaBase
+                    }
+                )
+                : false
+        )
+
+        const { segments } = await ANALYZERS[type].segmentFile(analyzeResultPath, segmentationArgs, verboseBasepath)
 
         console.error(`Found ${segments.length} segments.`)
         for (let seq=1 ; seq<=segments.length; seq++) {
@@ -263,7 +293,7 @@ module.exports = {
             console.error(`  dur:    ${toDurationSpec(end-start)}`)
 
             const outputPath = getOutputPath(output, outputDir, {
-                base: basename(mediaPath, extname(mediaPath)),
+                base: mediaBase,
                 seq,
                 ext: format
             })

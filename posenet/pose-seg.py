@@ -7,6 +7,7 @@ from scipy.interpolate import interp1d
 import scipy.ndimage.morphology as morphology
 import sys
 import os
+import traceback
 
 def find_mode(Y, t):
     return linear_model.HuberRegressor().fit(t.reshape(-1, 1), Y).intercept_
@@ -161,26 +162,44 @@ def seg_pose(csvpath, dump):
         print(f'{{"start_t": {round(start_t, 3)}, "end_t": {round(end_t, 3)}}}')
 
     if dump:
-        import matplotlib.pyplot as plt
-        import matplotlib
-        matplotlib.rcParams.update({'font.size': 18})
+        try:
+            import matplotlib.pyplot as plt
+            import matplotlib
+            matplotlib.rcParams.update({'font.size': 18})
 
-        fig, ax = plt.subplots(6, 1, figsize=(36,24), sharex=True)
-        fig.suptitle(os.path.basename(csvpath))
+            fig, ax = plt.subplots(6, 1, figsize=(36,24), sharex=True)
+            fig.suptitle(os.path.basename(csvpath))
 
-        f_eye = plot_yc(ax[0], eye, eye2, eye_c, eye_c2, t, mode_eye, decision_eye, 'eye')
-        f_ear = plot_yc(ax[1], ear, ear2, ear_c, ear_c2, t, mode_ear, decision_ear, 'ear')
-        f_sld = plot_yc(ax[2], sld, sld2, sld_c, sld_c2, t, mode_sld, decision_sld, 'shoulder')
-        f_hip = plot_c(ax[3], hip_c, hip_c2, t, mode_hip_c, decision_hip, 'hip')
-        f_knee = plot_c(ax[4], knee_c, knee_c2, t, mode_knee_c, decision_knee, 'knee')
-        f_decision = plot_c(ax[5], score, decision, t, None, None, 'decision')
+            f_eye = plot_yc(ax[0], eye, eye2, eye_c, eye_c2, t, mode_eye, decision_eye, 'eye')
+            f_ear = plot_yc(ax[1], ear, ear2, ear_c, ear_c2, t, mode_ear, decision_ear, 'ear')
+            f_sld = plot_yc(ax[2], sld, sld2, sld_c, sld_c2, t, mode_sld, decision_sld, 'shoulder')
+            f_hip = plot_c(ax[3], hip_c, hip_c2, t, mode_hip_c, decision_hip, 'hip')
+            f_knee = plot_c(ax[4], knee_c, knee_c2, t, mode_knee_c, decision_knee, 'knee')
+            f_decision = plot_c(ax[5], score, decision, t, None, None, 'decision')
 
-        labels = [sec_to_time_repr(t) for t in ax[5].get_xticks()]
-        ax[5].set_xticklabels(labels)
-        ax[5].tick_params(axis='x', length=8, width=2, colors='black')
-        fig.tight_layout()
+            labels = [sec_to_time_repr(t) for t in ax[5].get_xticks()]
+            ax[5].set_xticklabels(labels)
+            ax[5].tick_params(axis='x', length=8, width=2, colors='black')
+            fig.tight_layout()
 
-        fig.savefig(dump, dpi=144, optimize=True, facecolor='w', format='png')
+            if not dump.endswith('.png'):
+                png_path = dump + '.png'
+            else:
+                png_path = dump
+
+            fig.savefig(png_path, dpi=144, optimize=True, facecolor='w', format='png')
+        except:
+            print(f'Fail to dump analysis diagram, error:', file=sys.stderr)
+            print(traceback.format_exc(), file=sys.stderr)
+            try:
+                trace_path = dump + '.png'
+                with open(trace_path, 'w') as f:
+                    print(f'Fail to dump analysis diagram, error:', file=f)
+                    print(traceback.format_exc(), file=f)
+            except:
+                print(f'Fail to write dump trace, error:', file=sys.stderr)
+                print(traceback.format_exc(), file=sys.stderr)
+
 
 parser = argparse.ArgumentParser(
     usage = '%(prog)s [-d dump] <csv>',
