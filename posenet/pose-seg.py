@@ -175,7 +175,7 @@ def seg_pose(csvpath, dump):
             f_sld = plot_yc(ax[2], sld, sld2, sld_c, sld_c2, t, mode_sld, decision_sld, 'shoulder')
             f_hip = plot_c(ax[3], hip_c, hip_c2, t, mode_hip_c, decision_hip, 'hip')
             f_knee = plot_c(ax[4], knee_c, knee_c2, t, mode_knee_c, decision_knee, 'knee')
-            f_decision = plot_c(ax[5], score, decision, t, None, None, 'decision')
+            f_decision = plot_c(ax[5], score, decision * score.max() * 1.1, t, None, None, 'decision')
 
             labels = [sec_to_time_repr(t) for t in ax[5].get_xticks()]
             ax[5].set_xticklabels(labels)
