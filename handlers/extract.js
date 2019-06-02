@@ -110,6 +110,10 @@ async function ensureAnalyzerResult({
 }
 
 // return ffmpeg exit code
+// TODO: fiddle with ffmpeg timestamp / pts / dts handling
+//       posenet analysis can produce reasonable pts even there is incorrect pts
+//       but during extraction, ffmpeg's pts calculation differs from our corrected version
+//       so it will not produce the desired segment
 async function extractMediaSegmentTo(media, start, end, format, outputPath) {
     const ffmpegFormat = ({
         'mp4': 'mp4',

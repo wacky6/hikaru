@@ -121,6 +121,51 @@ async function createDemuxFromFile(fileSpec) {
     return await beamcoder.demuxer(fileSpec)
 }
 
+function createPtsCorrection(time_base, startTime = 0) {
+    let lastPts = null
+    let lastDts = null
+    let lastPtsDelta = 0
+    let ptsOffset = 0
+
+    return {
+        computeTimePosition(frame) {
+            let pts = ptsOffset + frame.pts
+            let dts = frame.pkt_dts
+
+            if (pts < lastPts) {
+                console.error(`posenet: <warn> pts mismatch`)
+                console.error(`    PTS: prev=${lastPts}, cur=${pts}`)
+                console.error(`    DTS: prev=${lastDts}, cur=${dts}`)
+                console.error(`    prev_pts_delta=${lastPtsDelta}`)
+
+                // because i-frames are decoded on their own
+                // their dts interval should be equal to pts interval
+                const dtsDelta = dts - lastDts
+                if (lastPtsDelta) {
+                    const dtsPtsAgreementRatio = (dtsDelta - lastPtsDelta) / lastPtsDelta
+                    if (-0.2 <= dtsPtsAgreementRatio && dtsPtsAgreementRatio < 0.2) {
+                        console.error(`    attempting to correct with pkt_dts`)
+                        ptsOffset = lastPts + dtsDelta - frame.pts
+                        console.error(`    corrected_pts=${ptsOffset + pts}, last_pts=${lastPts}`)
+                        pts = ptsOffset + frame.pts
+                    } else {
+                        console.error(`    pkt_dts is way off: prev=${lastDts}, cur=${dts}`)
+                    }
+                } else {
+                    console.error(`    pts_delta not available, can not correct`)
+                    console.error(`    this is davestating, analysis result will be inaccurate`)
+                }
+            }
+
+            lastPtsDelta = pts - lastPts    // estimated i-frame interval
+            lastPts = pts
+            lastDts = dts
+
+            return pts / time_base[1] * time_base[0] - startTime
+        }
+    }
+}
+
 async function processMedia(
     streamOrPath,
     posenetMul = 0.75,
@@ -145,6 +190,9 @@ async function processMedia(
         format: inputPixelFormat
     } = vs.codecpar
     const videoStartTime = vs.start_time / vs.time_base[1] * vs.time_base[0]
+
+    // use to correct non-increasing pts
+    const { computeTimePosition } = createPtsCorrection(vs.time_base, videoStartTime)
 
     const decoder = beamcoder.decoder({
         demuxer: demux,
@@ -195,16 +243,17 @@ async function processMedia(
         if (!frames || frames.length === 0) return
 
         const filtResult = await vfilt.filter(frames)
-        for (let rgbFrame of filtResult[0].frames) {
-            const pts = rgbFrame.pts / vs.time_base[1] * vs.time_base[0] - videoStartTime
 
-            if (budget.shouldSkipPts(pts)) {
-                console.error(`Skipping pts ${pts} due to insufficient budget, ${budget.budgetRequired.toFixed(2)}ms required.`)
-                budget.markSkippedPts(pts)
+        for (let rgbFrame of filtResult[0].frames) {
+            const timePos = computeTimePosition(rgbFrame)
+
+            if (budget.shouldSkipPts(timePos)) {
+                console.error(`posenet: <warn> skip pts ${timePos} due to insufficient budget, ${budget.budgetRequired.toFixed(2)}ms required.`)
+                budget.markSkippedPts(timePos)
                 continue
             }
 
-            budget.markProcessStartForPts(pts)
+            budget.markProcessStartForPts(timePos)
 
             const buf = rgbFrame.data[0]
             const bufLen = width * height * 4
@@ -213,9 +262,9 @@ async function processMedia(
 
             const poses = await pnet.estimateMultiplePoses(canvas, scale, false, netStride)
             const truePoses = restoreUncroppedCoordinate(poses, cX, cY)
-            await handlePoses(truePoses, rgbFrame, pts)
+            await handlePoses(truePoses, rgbFrame, timePos)
 
-            budget.markProcessEndForPts(pts)
+            budget.markProcessEndForPts(timePos)
         }
     }
 
