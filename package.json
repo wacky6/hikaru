@@ -8,7 +8,7 @@
   "main": "exports.js",
   "scripts": {
     "test": "tape test/*.js",
-    "postinstall": "node -e 'require(`./posenet/`).fetchCheckpoints()'"
+    "postinstall": "node -e 'require(`./posenet/checkpoints`).fetchCheckpoints()'"
   },
   "repository": "https://github.com/wacky6/hikaru/",
   "author": "Jiewei Qian <qjw@wacky.one>",
@@ -26,7 +26,6 @@
     "shuffle-array": "^1.0.1",
     "string-argv": "^0.3.0",
     "superagent": "^3.8.3",
-    "winston": "^3.0.0",
     "ws": "^6.0.0",
     "yargs": "^13.2.4"
   },

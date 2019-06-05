@@ -163,9 +163,11 @@ def seg_pose(csvpath, dump):
 
     if dump:
         try:
-            import matplotlib.pyplot as plt
             import matplotlib
+            matplotlib.use('Agg')
             matplotlib.rcParams.update({'font.size': 18})
+
+            import matplotlib.pyplot as plt
 
             fig, ax = plt.subplots(6, 1, figsize=(36,24), sharex=True)
             fig.suptitle(os.path.basename(csvpath))

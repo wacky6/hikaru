@@ -4,3 +4,4 @@ node_modules
 *.tmp
 posenet/mobilenet*
 posenet/libtensorflow.*
+.vscode
