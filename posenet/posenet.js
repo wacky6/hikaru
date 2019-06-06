@@ -85,8 +85,8 @@ function computeAnalysisRegion(width, height, cropSpec = [15, 15]) {
         return [width - cropLeft - cropRight, height, cropLeft, 0]
     } else if (width < height) {
         const cropTop = Math.round(cropSpec[0] / 100 * height)
-        const cropBottom = Math.round(cropSpec[1] / 100 * bottom)
-        return [width, height - cropHeight - cropBottom, 0, cropTop]
+        const cropBottom = Math.round(cropSpec[1] / 100 * height)
+        return [width, height - cropTop - cropBottom, 0, cropTop]
     } else {
         return [width, height, 0, 0]
     }
