@@ -123,11 +123,11 @@ async function extractMediaSegmentTo(media, start, end, format, outputPath) {
         const args = [
             '-hide_banner',
             '-ss',
-            String(start),
+            Number(start).toFixed(3),
             '-i',
             media,
             '-to',
-            String(end - start),
+            Number(end - start).toFixed(3),
             '-c',
             'copy',
             '-format',
@@ -135,7 +135,7 @@ async function extractMediaSegmentTo(media, start, end, format, outputPath) {
             '-y',
             outputPath,
         ]
-        const child = spawn('ffmpeg', args, stdio = ['ignore', 'ignore', 'ignore'])
+        const child = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'ignore'] })
         child.once('exit', (code) => { resolve(code) })
     })
 }

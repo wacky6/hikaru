@@ -39,7 +39,7 @@ async function getFlvStream(url) {
         url,
     ]
 
-    const child = spawn('curl', args, stdio = ['ignore', 'pipe', 'pipe'])
+    const child = spawn('curl', args, { stdio: ['ignore', 'pipe', 'pipe'] })
     child.stderr.pipe(process.stderr)
 
     return child.stdout
@@ -230,7 +230,7 @@ async function convertContainerFormat(sourcePath, targetPath, targetFormat = 'fl
     ]
 
     return new Promise(resolve => {
-        const child = spawn('ffmpeg', args, stdio = ['ignore', 'ignore', 'pipe'])
+        const child = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] })
 
         child.once('exit', (code) => {
             console.error('')
