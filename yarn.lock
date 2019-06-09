@@ -178,8 +178,8 @@ balanced-match@^1.0.0:
   resolved "https://registry.npmjs.org/balanced-match/-/balanced-match-1.0.0.tgz#89b4d199ab2bee49de164ea02b89ce462d71b767"
 
 "beamcoder@https://github.com/wacky6/beamcoder":
-  version "0.3.1"
-  resolved "https://github.com/wacky6/beamcoder#3cc7cc483cdbffb3bf2c72063f80f60e8bf54f89"
+  version "0.3.2"
+  resolved "https://github.com/wacky6/beamcoder#633cb5a3ce6ba33ff2547824d95f64a092c98293"
   dependencies:
     bindings "^1.5.0"
     koa "^2.7.0"
