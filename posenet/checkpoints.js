@@ -1,7 +1,7 @@
 // should only contain built-in imports/requires
 
 const fs = require('fs')
-const https = require('https')
+const agent = require('superagent')
 const path = require('path')
 
 const GOOGLE_STORAGE_DIR = 'https://storage.googleapis.com/tfjs-models/weights/posenet/'
@@ -15,22 +15,23 @@ const downloadUrlToPath = (url, localPath, trial = 0) => new Promise((resolve, r
         return reject(new Error('Retry Count Exceeded.'))
     }
 
-    https.get(url, res => {
-        if (res.statusCode !== 200) {
-            process.stderr.write('!')
-            console.error(`\n${res.statusCode} \t ${url}`)
-            reject(new Error('Non OK Response Code'))
-        } else {
-            process.stderr.write('.')
+    agent.get(url).responseType('blob').then(
+        res => {
+            if (!res.ok) {
+                process.stderr.write('!')
+                console.error(`\n${res.statusCode} \t ${url}`)
+                reject(new Error('Non OK Response Code'))
+            } else {
+                process.stderr.write('.')
+            }
+
+            fs.writeFile(localPath, res.body, resolve)
+        },
+        _ => {
+            process.stderr.write('r')
+            downloadUrlToPath(url, localPath, trial + 1)
         }
-        const outStream = fs.createWriteStream(localPath)
-        const pipe = res.pipe(outStream)
-        pipe.on('close', resolve)
-    })
-    .on('error', _ => {
-        process.stderr.write('r')
-        downloadUrlToPath(url, localPath, trial + 1)
-    })
+    )
 })
 
 async function fetchCheckpoints() {

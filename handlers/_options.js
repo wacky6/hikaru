@@ -1,4 +1,5 @@
 // global options parser
+const { hasPosenetSupport } = require('../modular-support')
 const parseTelegram = require('../lib/telegram-parser')
 const { defaultMongodbConnection } = require('../lib/_mongo')
 const { ANALYSIS_BACKENDS } = require('./extract')
@@ -9,7 +10,7 @@ module.exports = {
     ,
     global: yargs => yargs
     ,
-    extract: yargs => yargs
+    extract: yargs => !hasPosenetSupport ? yargs : yargs
         .option('x', {
             alias: 'extract',
             describe: `enable extraction

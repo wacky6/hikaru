@@ -23,7 +23,7 @@ WORKDIR /root/
 
 # copy files what are necessary to build dependency
 COPY package.json yarn.lock /hikaru/
-COPY posenet/checkpoints.js /hikaru/posenet/
+COPY posenet/checkpoints.js posenet/package.json posenet/yarn.lock /hikaru/posenet/
 
 RUN mkdir -p /root/hikaru/ && \
     apt update && \
@@ -41,15 +41,11 @@ RUN mkdir -p /root/hikaru/ && \
     apt install --no-install-recommends --no-upgrade -y ${RUNTIME_PKGS} && \
     apt autoremove -y && apt clean -y && \
     mv /etc/_localtime /etc/localtime && \
-    mv /hikaru/node_modules/@tensorflow/tfjs-node/deps/lib/libtensorflow.so /lib/libtensorflow.so && \
-    ln -s /lib/libtensorflow.so /hikaru/node_modules/@tensorflow/tfjs-node/deps/lib/libtensorflow.so
+    mv /hikaru/posenet/node_modules/@tensorflow/tfjs-node/deps/lib/libtensorflow.so /lib/libtensorflow.so && \
+    ln -s /lib/libtensorflow.so /hikaru/posenet/node_modules/@tensorflow/tfjs-node/deps/lib/libtensorflow.so
 
 # prevent memory leak with glibc
 ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.1
-
-# TODO: make `node_modules/@tensorflow/tfjs-node/deps/lib/libtensorflow.so` a symlink
-#       to an easy mount/bind location.
-#       this allows host system to inject an optimized tensorflow for better performance
 
 COPY . /hikaru/
 

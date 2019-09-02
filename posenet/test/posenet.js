@@ -24,7 +24,7 @@ test('extract plumbing works', async t => {
     spawnSync(
         'node',
         [
-            resolve(__dirname, '../bin/hikaru'),
+            resolve(__dirname, '../../bin/hikaru'),
             'extract',
             resolve(__dirname, 'pose_test_sample.mp4'),
             '-t',
@@ -46,7 +46,7 @@ test('pose segmentation dump', async t => {
     spawnSync(
         'python3',
         [
-            resolve(__dirname, '../posenet/pose-seg.py'),
+            resolve(__dirname, '../pose-seg.py'),
             resolve(__dirname, 'pose_test_sample.csv'),
             '-d',
             resolve(__dirname, '/tmp/out.png')

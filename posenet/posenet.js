@@ -1,7 +1,7 @@
 const { createCanvas, createImageData } = require('canvas')
 const beamcoder = require('beamcoder')
 const { load: loadPoseNet } = require('./model')
-const { createBudgetForStream, isRealtimeStream, BudgetForFile } = require('../lib/stream-budget')
+const { createBudgetForStream, isRealtimeStream, BudgetForFile } = require('./stream-budget')
 const { Readable, Duplex, Transform } = require('stream')
 
 /* <DONE>, see posenet/posenet_local

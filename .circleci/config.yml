@@ -11,7 +11,7 @@ jobs:
           command: rm -f .dockerignore
       - run:
           name: Build container image
-          command: docker build . -t hikaru-test
+          command: docker build . -t hikaru-test -f Dockerfile.full
       - run:
           name: Testing built container
           command: |

@@ -1,5 +1,5 @@
-const { dirname, basename, extname } = require('path')
-const { resolvePath, getOutputPath } = require('../lib/fs')
+const { dirname } = require('path')
+const { resolvePath } = require('../lib/fs')
 const { spawn, execFile } = require('child_process')
 const { parseArgsStringToArgv } = require('string-argv')
 

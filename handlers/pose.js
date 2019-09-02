@@ -8,7 +8,7 @@ const fs = require('fs')
 const {dirname, basename, extname, resolve, join} = require('path')
 const {processMedia, createCsvHandler, createNdjsonHandler} = require('../posenet')
 const {Readable, Duplex, Transform} = require('stream')
-const {isRealtimeStream} = require('../lib/stream-budget')
+const {isRealtimeStream} = require('../posenet/stream-budget')
 
 function getDefaultOutputPath(inputPath, format = 'ndjson') {
     if (inputPath === '-' || inputPath === '') {    // hack for yargs's option dash parsing
