@@ -1,10 +1,8 @@
-hikaru
-===
-Bilibili Live 录制姬 🌟 Never miss a single Bili-Live again!
-
-    君は私の光
-
-![hikaru](./icon.png)
+<p align="center">
+    <img width="360" height="350" src="https://raw.githubusercontent.com/wacky6/hikaru/master/icon.png"></img>
+    <h1 align="center">hikaru</h1>
+    <blockquote align="center">此时此刻，你也一定，光辉耀目<br> / 君は私の光〜</blockquote>
+</p>
 
 * [Docker 用法](#docker-用法)
 * [直播监听 / 录屏](#直播监听---daemon)
@@ -13,16 +11,22 @@ Bilibili Live 录制姬 🌟 Never miss a single Bili-Live again!
 * [身体姿势分析](#身体姿势分析---pose)
 * [热点片段截取](#热点片段截取---extract)
 * [示例（Docker）](#示例-docker环境)
+* [性能优化（针对Docker）](#性能优化)
 
 ---
 
 ## Docker 用法
+提供两个版本的镜像tag，请按照需求选择：
+
+`wacky6/hikaru:lite` 仅提供**基础录屏**功能（仅daemon和dmk），镜像大小 ~120MB \
+`wacky6/hikaru:full` 提供完整功能（包括自动提取），镜像大小 ~1.2GB
+
 ```shell
-docker pull wacky6/hikaru
+docker pull wacky6/hikaru:<tag>
 docker run -v <local_dir>:/root/hikaru/ wacky6/hikaru <command> [args...]
 ```
 
-可以在指令后追加 `--help` 选项查看帮助
+在指令后追加 `--help` 选项查看帮助，参见[Docker示例](#示例-docker环境)
 
 ## 直播监听 - daemon
 ```shell
@@ -96,17 +100,20 @@ hikaru pose <input>
 hikaru extract <media> -t <type>
 ```
 
-分析视频内容，截取热点片段（~~自动白瞟姬~~）。
+分析视频内容，截取热点片段（~~白瞟姬~~）。
 
 * `<media>`：已保存的直播视频
 * `-t` / `--type <T>`：指定热点类型，目前支持：
   - `dance`：舞区（视频聊天 - 舞见），截取跳舞的片段，基于 Pose 分析
+* `-X`：指定提取过程的参数
+* `-A`：指定分析过程的参数
 
 更多选项用 `hikaru extract --help` 查看。
 
 
 ## 示例 （Docker环境）
 ```shell
+### 基础录屏
 # 录制 922045 房间
 # 保存录像到 `/storage/hikaru/焦小玲珑`
 # 绕墙发送开播通知，有弹出框
@@ -114,13 +121,14 @@ docker run \
   --restart=always -itd \
   --name hikaru-922045 \
   -v /storage/hikaru/焦小玲珑:/root/hikaru \
-  wacky6/hikaru daemon 922045 \
-  -t 3108991:ABCDEFGHIJKLMN:19950418 \
+  wacky6/hikaru:lite daemon 922045 \
+  -t 03108991:ABCDEFGHIJKLMN:19950418 \
   -T https://tg-api.example.com/
 ```
 
 ```shell
-# 监听 922045、797308、278762 房间的弹幕
+### 基础弹幕捕获
+# 监听 922045、697773 房间的弹幕
 # 每房间一个冗余的弹幕姬
 # 推送弹幕到 AMQP，推送广播弹幕，开启刷屏弹幕过滤
 # 保留原始弹幕日志到 `/storage/hikaru/dmk`
@@ -128,12 +136,53 @@ docker run \
   --restart=always -itd \
   --name hikaru-dmk-r1 \
   -v /storage/hikaru/dmk:/data \
-  wacky6/hikaru dmk \
+  wacky6/hikaru:lite dmk \
   -r 1 \
   -pbR \
   -l '/data/dmk-@roomid.log' \
-  922045 797308 278762
+  922045 697773
 ```
+
+```shell
+### 录屏并自动提取
+# 录制并自动提取 424902 房间的跳舞片段
+# 保存录像到 `/storage/hikaru/424902`
+# 提取mp4片段到 `/cache/extracted`，保留分析结果和分段详情
+# 用 -r 选项打开实时分析，在下播后数分钟内即可全部提取
+docker run \
+  --restart=always -itd \
+  --name hikaru-dance-424902 \
+  -v /storage/hikaru/424902:/root/hikaru \
+  -v /cache/extracted:/root/hikaru/extracted \
+  wacky6/hikaru:full daemon 424902 \
+  -r \
+  -x dance -X '-p -d -f mp4'
+```
+
+```shell
+### 从已有录屏提取
+# 提取 /storage/焦小玲珑/2018-09-04_180519.flv 录屏
+# 提取跳舞片段为 mp4 到 /cache/extracted-922045
+# 保留姿态分析结果，给出分段详情 PNG
+# 使用本机优化编译的 /root/libtensorflow.native
+docker run \
+  --rm \
+  -v /storage:/storage \
+  -v /cache:/cache \
+  -v /root/libtensorflow.native:/lib/libtensorflow.so
+  wacky6/hikaru:full extract \
+  -f mp4 \
+  -pd \
+  -O '/cache/extracted-922045' \
+  '/storage/焦小玲珑/2018-09-04_180519.flv'
+```
+
+
+## 性能优化
+根据 [posenet/build-tf](https://github.com/wacky6/hikaru/tree/master/posenet/build-tf) 中的指令构建优化后的tensorflow运行时，然后用Docker的`-v`/`--mount`指令挂载输出的libtensorflow.so到容器的`/lib/libtensorflow.so`
+
+默认参数下，AMD X3621获得 ~30% 提升，i7 6700HQ获得 ~50% 提升。
+
 
 ## LICENSE
 GPL-3.0
