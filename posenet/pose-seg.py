@@ -162,11 +162,13 @@ def seg_pose(csvpath, dump):
 
         # mark end position, do extra checks
         if cur_start and not decision[i]:
+            # check duration is reasonable
             # check segment is constructed with sufficient samples
-            # and detection in samples are dynamic (e.g. not from a static photo)
+            # detection in samples are dynamic (e.g. not from a static photo)
 
             start_t, start_i = cur_start
             end_t, end_i = t[i], i
+            duration = end_t - start_t
 
             cur_start = None    # unmark start position for next iteration
 
@@ -179,6 +181,13 @@ def seg_pose(csvpath, dump):
                 compute_volatility(ear[start_i:end_i+1]),
                 compute_volatility(sld[start_i:end_i+1]),
             ])
+
+            if duration > 600:
+                # most likely misdetection
+                # a typical dance should not last more than 10 minutes
+                print(f'Ignore segment {round(start_t, 3)} to {round(end_t, 3)}: too long duration, time = {round(duration)} secs', file=sys.stderr)
+                ignored_segments.append((start_t, end_t, 'too long', 'T'))
+                continue
 
             if sample_ratio < 0.3:
                 # most likely static image
