@@ -4,6 +4,7 @@ import numpy as np
 from sklearn import linear_model
 from scipy.signal import medfilt
 from scipy.interpolate import interp1d
+from math import floor
 import scipy.ndimage.morphology as morphology
 import sys
 import os
@@ -47,6 +48,14 @@ def plot_c(ax1, c, c2, t, mode_c, thresh_c, clabel = ''):
     if thresh_c:
         ax1.axhline(y=thresh_c, color='r', linewidth=2)
 
+def compute_volatility(a, window = 0.85):
+    a = np.sort(a)
+    n_drop = min(3, round(len(a) * (1-window) / 2))
+
+    # compute relative deviation of `window` portion of samples
+    a = a[n_drop: len(a)-n_drop]
+    return np.std(a) / np.mean(a)
+
 def seg_pose(csvpath, dump):
     THRESHOLD_EYE = 0.8
     THRESHOLD_EAR = 0.8
@@ -75,7 +84,6 @@ def seg_pose(csvpath, dump):
     if len(t) <= 10:
         print(f'Too few body pose samples, ignored. {csvpath}', file=sys.stderr)
         exit(0)
-
 
     intra_frame_interval = np.diff(t).mean()
 
@@ -142,14 +150,48 @@ def seg_pose(csvpath, dump):
     decision = morphology.binary_opening(decision, filter_struct)
     decision = morphology.binary_dilation(decision, expand_struct)
 
+    # scan through decision score, build segment list
     segments = []
+    ignored_segments = []
     cur_start = None
+
     for i in range(decision.shape[0]):
+        # mark start position
         if not cur_start and decision[i]:
-            cur_start = t[i]
+            cur_start = t[i], i
+
+        # mark end position, do extra checks
         if cur_start and not decision[i]:
-            segments.append((cur_start, t[i]))
-            cur_start = None
+            # check segment is constructed with sufficient samples
+            # and detection in samples are dynamic (e.g. not from a static photo)
+
+            start_t, start_i = cur_start
+            end_t, end_i = t[i], i
+
+            cur_start = None    # unmark start position for next iteration
+
+            n_actual_samples = end_i - start_i
+            n_expected_samples = floor((end_t - start_t) / intra_frame_interval) + 1
+            sample_ratio = n_actual_samples / n_expected_samples
+
+            volatility = np.mean([
+                compute_volatility(eye[start_i:end_i+1]),
+                compute_volatility(ear[start_i:end_i+1]),
+                compute_volatility(sld[start_i:end_i+1]),
+            ])
+
+            if sample_ratio < 0.3:
+                # most likely static image
+                print(f'Ignore segment {round(start_t, 3)} to {round(end_t, 3)}: too few valid samples, ratio = {round(sample_ratio, 2)}', file=sys.stderr)
+                ignored_segments.append((start_t, end_t, 'valid samples', 'S'))
+                continue
+
+            if volatility < 0.08:
+                print(f'Ignore segment {round(start_t, 3)} to {round(end_t, 3)}, too small volatility, r_vol = {volatility.round(5)}', file=sys.stderr)
+                ignored_segments.append((start_t, end_t, 'volatility', 'V'))
+                continue
+
+            segments.append((start_t, end_t))
 
     if len(segments) > (np.max(t) - np.min(t)) / 3600 * MAX_SEGMENTS_PER_HOUR:
         print(f'Too many segments, possibly wrong type. {csvpath}', file=sys.stderr)
@@ -178,6 +220,16 @@ def seg_pose(csvpath, dump):
             f_hip = plot_c(ax[3], hip_c, hip_c2, t, mode_hip_c, decision_hip, 'hip')
             f_knee = plot_c(ax[4], knee_c, knee_c2, t, mode_knee_c, decision_knee, 'knee')
             f_decision = plot_c(ax[5], score, decision * score.max() * 1.1, t, None, None, 'decision')
+
+            for start_t, end_t, reason, code in ignored_segments:
+                m_time = (end_t + start_t) / 2
+                ax[5].text(m_time, 1.55, code,
+                    horizontalalignment='center',
+                    verticalalignment='bottom',
+                    color='red',
+                    fontsize=26
+                )
+                ax[5].fill_between([start_t, end_t], 0, 1.5, color=[1, 0.6, 0.6])
 
             labels = [sec_to_time_repr(t) for t in ax[5].get_xticks()]
             ax[5].set_xticklabels(labels)
