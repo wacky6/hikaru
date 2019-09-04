@@ -1,13 +1,20 @@
-const { global: injectGlobalOptions, output: injectOutputOptions } = require('./_options')
+const {
+    injectOptions,
+    global: globalOpts,
+    output: outputOpts,
+    extract: extractOpts
+} = require('./_options')
 const { parseRoom } = require('../lib/parser')
 const { getRoomInfo, getRoomUser, getPlayUrls } = require('../lib/bili-api')
 const { spawn } = require('child_process')
-const { createWriteStream, resolvePath, getFileSize } = require('../lib/fs')
+const { createWriteStream, getFileSize, getOutputPath } = require('../lib/fs')
 const { unlink } = require('fs')
-const expandTemplate = require('../lib/string-template')
 const dateformat = require('dateformat')
 const { resolve: resolveUrl } = require('url')
 const { sendMessage, editMessageText } = require('../lib/telegram-api')
+const { parseArgsStringToArgv } = require('string-argv')
+const { PassThrough } = require('stream')
+const { resolve: pathResolve } = require('path')
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -18,7 +25,10 @@ const BLANK_STREAM_FILE_SIZE_THRESHOLD = 1024
 // interval between live status checks, in milliseconds
 const LIVE_STATUS_CHECK_INTERVAL = 60 * 1000
 
-async function downloadStream(url, outputPath) {
+const NODE_EXEC = process.execPath
+const HIKARU_EXEC = pathResolve(__dirname, '../bin/hikaru')
+
+async function getFlvStream(url) {
     const args = [
         '-L',    // follow redirect
         '-S',    // print error
@@ -29,21 +39,10 @@ async function downloadStream(url, outputPath) {
         url,
     ]
 
-    const stream = outputPath === '-' ? process.stdout : createWriteStream(outputPath)
+    const child = spawn('curl', args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    child.stderr.pipe(process.stderr)
 
-    return new Promise(resolve => {
-        const child = spawn('curl', args, stdio = ['ignore', 'pipe', 'pipe'])
-
-        child.once('exit', (code) => {
-            console.error('')
-            console.error(`curl exits with: ${code}`)
-            console.error('')
-            resolve(code)
-        })
-
-        child.stdout.pipe(stream)
-        child.stderr.pipe(process.stderr)
-    })
+    return child.stdout
 }
 
 async function sendNotification(tgOpts, messageArgs) {
@@ -102,22 +101,34 @@ function formatTimeDuration(secs) {
     return dateformat(date, 'UTC:HH:MM:ss')
 }
 
-function getOutputPath(output, outputDir, opts = {}) {
-    return (
-        output === '-'
-            ? '-'
-            : resolvePath(
-                outputDir,
-                expandTemplate(output, {
-                    ext: 'flv',
-                    time: dateformat(new Date(), 'yyyy-mm-dd_HH-MM-ss'),
-                    ... opts,
-                })
-            )
-    )
-}
-
-async function captureStream(outputPath, canonicalRoomId) {
+/*
+ * params:
+ *   outputPath: path to write captured flv
+ *   canonicalRoomId: canonical room id
+ *   extractOpts: if provided, {
+ *     type: String
+ *     args: String, additional arguments to extract command
+ *     realtime: Boolean, whether to perform analysis in real time
+ *   }
+ *
+ * resolves when flv stream ends.
+ *
+ * caller should check whether if this is caused by network error (i.e. stagnation),
+ * or the host stops streaming (check LIVE_STATUS)
+ *
+ * returns:
+ *   {
+ *     promiseFlvStreamFinish:  promise resolves to a boolean when flv stream ends
+ *                              it resolves immediately when this function returns
+ *                               - true if curl finishes without error
+ *                               - false if curl exits with non-zero code
+ *     promiseExtractionFinish: promise resolves to a boolean when extraction finishes,
+ *                               - true indicates extraction is successful
+ *                               - false indicates extraction fails
+ *                                 (caller should preserve original stream in this case)
+ *   }
+ */
+async function captureStream(outputPath, canonicalRoomId, extractOpts = false) {
     const {
         quality,
         urls,
@@ -135,12 +146,65 @@ async function captureStream(outputPath, canonicalRoomId) {
     console.error(`    ${outputPath}`)
     console.error('')
 
-    await downloadStream(urls[0].url, outputPath)
+    const outputStream = outputPath === '-' ? process.stdout : createWriteStream(outputPath)
+    const flvStream = await getFlvStream(urls[0].url)
+
+    const passToOutput = new PassThrough()
+    passToOutput.pipe(outputStream)
+    flvStream.pipe(passToOutput)
+
+    let promiseFlvStreamFinish = new Promise(resolve => outputStream.once('close', _ => resolve(true)))
+    let promiseExtractionFinish = null
+
+    // setup realtime extraction if necessary
+    if (extractOpts && extractOpts.realtime) {
+        const { type, args } = extractOpts
+        const passToExtract = new PassThrough()
+        const extractProcess = spawn(NODE_EXEC, [
+            HIKARU_EXEC,
+            'extract',
+            '-',
+            '--ref-path',
+            outputPath,
+            '--type',
+            type,
+            ...parseArgsStringToArgv(args || '')
+        ], {
+            stdio: [ 'pipe', 'ignore', 'pipe' ]
+        })
+        passToExtract.pipe(extractProcess.stdin)
+        flvStream.pipe(passToExtract)
+        extractProcess.stderr.pipe(process.stderr)
+        promiseExtractionFinish = new Promise(resolve => extractProcess.once('close', (code) => resolve(code === 0)))
+    }
+
+    await promiseFlvStreamFinish
 
     // nuke blank stream
     const fileSize = await getFileSize(outputPath)
     if (fileSize < BLANK_STREAM_FILE_SIZE_THRESHOLD) {
         unlink(outputPath, err => err || console.error(`😈  删除空的视频流：${outputPath}`))
+    }
+
+    if (fileSize && extractOpts && !extractOpts.realtime) {
+        const { type, args } = extractOpts
+        const extractProcess = spawn(NODE_EXEC, [
+            HIKARU_EXEC,
+            'extract',
+            outputPath,
+            '--type',
+            type,
+            ...parseArgsStringToArgv(args || '')
+        ], {
+            stdio: [ 'ignore', 'ignore', 'pipe' ]
+        })
+        extractProcess.stderr.pipe(process.stderr)
+        promiseExtractionFinish = new Promise(resolve => extractProcess.once('close', (code) => resolve(code === 0)))
+    }
+
+    return {
+        promiseFlvStreamFinish,
+        promiseExtractionFinish: promiseExtractionFinish || Promise.resolve(true)
     }
 }
 
@@ -154,11 +218,10 @@ async function convertContainerFormat(sourcePath, targetPath, targetFormat = 'fl
     }
 
     const args = [
+        '-hide_banner',
         '-i',
         sourcePath,
-        '-c:v',
-        'copy',
-        '-c:a',
+        '-c',
         'copy',
         '-format',
         targetFormat,
@@ -166,7 +229,7 @@ async function convertContainerFormat(sourcePath, targetPath, targetFormat = 'fl
     ]
 
     return new Promise(resolve => {
-        const child = spawn('ffmpeg', args, stdio = ['ignore', 'ignore', 'pipe'])
+        const child = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] })
 
         child.once('exit', (code) => {
             console.error('')
@@ -187,7 +250,7 @@ async function convertContainerFormat(sourcePath, targetPath, targetFormat = 'fl
 }
 
 module.exports = {
-    yargs: yargs => injectOutputOptions(injectGlobalOptions(yargs))
+    yargs: yargs => injectOptions(yargs, globalOpts, outputOpts, extractOpts)
         .usage('$0 run <room_id>')
         .positional('room_id', {
             describe: 'room id or live url',
@@ -209,10 +272,18 @@ module.exports = {
             telegram = null,
             silent = false,
             noCapture = false,
-            format = 'flv'
+            format = 'flv',
+            extract = false,
+            extractArgs = '',
+            realtimeAnalyze = false,
         } = argv
 
         const telegramOpts = { telegramEndpoint, telegram, silent }
+
+        if (extract && (output === '-' || output === '')) {
+            console.error(`--extract can not work with stdout output`)
+            process.exit(1)
+        }
 
         try {
             // get idol information
@@ -253,10 +324,27 @@ module.exports = {
                     // capture stream
                     const flvTime = dateformat(new Date(), 'yyyy-mm-dd_HHMMss')
                     const flvPath = getOutputPath(output, outputDir, { idol: name, ext: 'flv', time: flvTime })
-                    await captureStream(flvPath, canonicalRoomId)
+                    const extractOpts = extract ? {
+                        type: extract,
+                        realtime: realtimeAnalyze,
+                        args: extractArgs || ''
+                    } : false
+
+                    const {
+                        promiseExtractionFinish
+                    } = await captureStream(flvPath, canonicalRoomId, extractOpts)
 
                     const outputPath = getOutputPath(output, outputDir, { idol: name, ext: format, time: flvTime })
-                    convertContainerFormat(flvPath, outputPath, format)    // asynchronously convert container format
+
+                    // asynchronously convert container format
+                    promiseExtractionFinish.then(success => {
+                        if (success) {
+                            console.error(`run: extraction success.`)
+                            return convertContainerFormat(flvPath, outputPath, format)
+                        } else {
+                            console.error(`run: extraction fails, will not convert container format`)
+                        }
+                    })
                 }
 
                 const {

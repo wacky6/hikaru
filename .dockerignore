@@ -1,3 +1,8 @@
 node_modules
 *.log
-icon.png
+*.png
+posenet/mobilenet*
+posenet/build-tf
+posenet/libtensorflow.*
+.vscode
+test/

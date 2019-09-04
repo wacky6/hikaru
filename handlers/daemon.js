@@ -2,6 +2,7 @@ const {
     global: globalOpts,
     output: outputOpts,
     telegram: telegramOpts,
+    extract: extractOpts,
     injectOptions
 } = require('./_options')
 const RUN = require('./run')
@@ -10,7 +11,7 @@ const setupSigterm = require('../lib/sigterm-handler')
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 module.exports = {
-    yargs: yargs => injectOptions(yargs, globalOpts, outputOpts, telegramOpts)
+    yargs: yargs => injectOptions(yargs, globalOpts, outputOpts, telegramOpts, extractOpts)
         .usage('$0 daemon <room_id> [options]')
         .positional('room_id', {
             describe: 'room id or live url',
@@ -24,6 +25,11 @@ module.exports = {
         })
     ,
     handler: async argv => {
+        if (argv.extract && (argv.output === '-' || argv.output === '')) {
+            console.error(`--extract can not work with stdout output`)
+            process.exit(1)
+        }
+
         setupSigterm()
         while (true) {
             const ret = await RUN.handler({

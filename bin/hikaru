@@ -1,14 +1,43 @@
 #!/usr/bin/env node
 
+const { hasPosenetSupport } = require('../modular-support')
+
 const RUN = require('../handlers/run')
 const DAEMON = require('../handlers/daemon')
 const DMK = require('../handlers/dmk')
+const POSE = hasPosenetSupport ? require('../handlers/pose') : null
+const EXTRACT = hasPosenetSupport ? require('../handlers/extract') : null
 
-require('yargs')
+const { parseArgsStringToArgv } = require('string-argv')
+
+// TODO: should escalate upstream
+// yargs-parser unquotes: -A "-r 1.01"
+// expects quoted content to be preserved
+const PATCHED_ARGV = process.argv.map(arg => {
+    if (arg.startsWith('-') && parseArgsStringToArgv(arg).length > 1) {
+        return ' '+arg
+    } else {
+        return arg
+    }
+}).slice(2)
+
+/*
+ * MAIN: Command definitions
+ */
+
+let yargChain = require('yargs')
     .usage('$0 <cmd> [args]')
     .command('run <room_id>', 'Capture live', RUN.yargs, RUN.handler)
     .command('daemon <room_id>', 'Monitor idol', DAEMON.yargs, DAEMON.handler)
     .command('dmk <room_id..>', 'Monitor danmaku channel', DMK.yargs, DMK.handler)
-    .demandCommand()
+
+if (hasPosenetSupport) {
+    yargChain = yargChain
+        .command('pose <input>', 'Analyze body pose', POSE.yargs, POSE.handler)
+        .command('extract <media>', 'Analyze body pose', EXTRACT.yargs, EXTRACT.handler)
+}
+
+yargChain
+    .demandCommand(1, 'Please specify one command')
     .help()
-    .argv
+    .parse(PATCHED_ARGV)

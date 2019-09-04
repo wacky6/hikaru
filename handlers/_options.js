@@ -1,12 +1,39 @@
 // global options parser
+const { hasPosenetSupport } = require('../modular-support')
 const parseTelegram = require('../lib/telegram-parser')
 const { defaultMongodbConnection } = require('../lib/_mongo')
+const { ANALYSIS_BACKENDS } = require('./extract')
 
 module.exports = {
     injectOptions: (yargs, ...opts) =>
         opts.reduce((yargs, opt) => opt(yargs), yargs)
     ,
     global: yargs => yargs
+    ,
+    extract: yargs => !hasPosenetSupport ? yargs : yargs
+        .option('x', {
+            alias: 'extract',
+            describe: `enable extraction
+ : takes an parameter as extraction type
+ : supports: ${Object.keys(ANALYSIS_BACKENDS).join(', ')}
+ : default: [none]`,
+            nargs: 1,
+            default: ''
+        })
+        .option('X', {
+            alias: 'extract-args',
+            describe: `additional arguments for extraction tool
+ : see "hikaru extract --help"`,
+            default: ''
+        })
+        .option('r', {
+            alias: 'realtime-analyze',
+            describe: `extract while streaming
+ : if available cpu is insufficient, frames will be dropped,
+ : in this case, extraction may be less accurate`,
+            type: 'boolean',
+            default: false
+        })
     ,
     output: yargs => yargs
         .option('O', {

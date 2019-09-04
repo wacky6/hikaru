@@ -15,6 +15,11 @@ RUN mkdir -p /root/hikaru/ && \
     echo ${TZ} > /etc/timezone && \
     apk del tzdata && \
     ( cd /hikaru/ ; yarn install )
-COPY . /hikaru/
+
+# TODO: should request docker upstream to support COPY exclusion
+COPY bin /hikaru/bin
+COPY handlers /hikaru/handlers
+COPY lib /hikaru/lib
+COPY modular-support.js LICENSE README.md /hikaru/
 
 ENTRYPOINT ["/hikaru/bin/hikaru"]
