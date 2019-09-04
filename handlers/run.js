@@ -179,7 +179,6 @@ async function captureStream(outputPath, canonicalRoomId, extractOpts = false) {
     }
 
     await promiseFlvStreamFinish
-    console.error('flv promise resolved')
 
     // nuke blank stream
     const fileSize = await getFileSize(outputPath)
