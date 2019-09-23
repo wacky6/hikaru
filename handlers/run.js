@@ -28,7 +28,7 @@ const LIVE_STATUS_CHECK_INTERVAL = 60 * 1000
 const NODE_EXEC = process.execPath
 const HIKARU_EXEC = pathResolve(__dirname, '../bin/hikaru')
 
-async function getFlvStream(url) {
+async function getFlvStream(url, referer) {
     const args = [
         '-L',    // follow redirect
         '-S',    // print error
@@ -36,6 +36,10 @@ async function getFlvStream(url) {
         '10',    //     10s
         '-Y',    // speed limit, used to detect stagnated stream
         '10000', //     10 kB/s, estimated from basic audio stream bitrate (~128kbps -> 16kB/s)
+        '-H',    // bilibili CDN wants UA, so they have a fake one :)
+        'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.132 Safari/537.36',
+        '-H',    // fake referer, in case of CDN wanting it
+        `Referer: ${referer}`,
         url,
     ]
 
@@ -147,7 +151,8 @@ async function captureStream(outputPath, canonicalRoomId, extractOpts = false) {
     console.error('')
 
     const outputStream = outputPath === '-' ? process.stdout : createWriteStream(outputPath)
-    const flvStream = await getFlvStream(urls[0].url)
+    const refererUrl = `https://live.bilibili.com/${canonicalRoomId}`
+    const flvStream = await getFlvStream(urls[0].url, refererUrl)
 
     const passToOutput = new PassThrough()
     passToOutput.pipe(outputStream)
