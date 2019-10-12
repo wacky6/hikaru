@@ -41,8 +41,14 @@ RUN mkdir -p /root/hikaru/ && \
     apt install --no-install-recommends --no-upgrade -y ${RUNTIME_PKGS} && \
     apt autoremove -y && apt clean -y && \
     mv /etc/_localtime /etc/localtime && \
-    mv /hikaru/posenet/node_modules/@tensorflow/tfjs-node/deps/lib/libtensorflow.so /lib/libtensorflow.so && \
-    ln -s /lib/libtensorflow.so /hikaru/posenet/node_modules/@tensorflow/tfjs-node/deps/lib/libtensorflow.so
+    ( cd /hikaru/posenet/node_modules/@tensorflow/tfjs-node/deps/lib/ && \
+      TF_LIB=$( readlink -f libtensorflow.so ) && \
+      TFF_LIB=$( readlink -f libtensorflow_framework.so ) && \
+      mv ${TF_LIB} /lib/tensorflow.so && \
+      mv ${TFF_LIB} /lib/tensorflow_framework.so && \
+      ln -s /lib/tensorflow.so ${TF_LIB} && \
+      ln -s /lib/tensorflow_framework.so ${TFF_LIB} \
+    )
 
 # prevent memory leak with glibc
 ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.1

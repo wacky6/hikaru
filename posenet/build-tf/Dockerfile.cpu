@@ -11,8 +11,8 @@ RUN    apt update \
     && apt install --no-install-recommends -y python3 build-essential curl ca-certificates unzip \
     && ln -s /usr/bin/python3 /usr/bin/python
 
-ENV TF_RELEASE=https://github.com/tensorflow/tensorflow/archive/v1.13.1.zip    \
-    BAZEL_RELEASE=https://github.com/bazelbuild/bazel/releases/download/0.19.2/bazel-0.19.2-installer-linux-x86_64.sh    \
+ENV TF_RELEASE=https://github.com/tensorflow/tensorflow/archive/v1.14.0.zip    \
+    BAZEL_RELEASE=https://github.com/bazelbuild/bazel/releases/download/0.24.1/bazel-0.24.1-installer-linux-x86_64.sh    \
     CC_OPT_FLAGS='-march=native'
 
 # bazel & tf binary

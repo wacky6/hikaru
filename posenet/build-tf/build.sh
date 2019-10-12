@@ -11,6 +11,7 @@ BUILD_OPTS="\
   --config nogcp \
   --config nohdfs \
   --config noignite \
+  --config=nokafka \
   --config nonccl \
 "
 
@@ -24,4 +25,4 @@ BUILD_OPTS="\
 # TODO: test
 
 # cp to dest
-cp $TF_DIR/bazel-out/k8-opt/bin/tensorflow/libtensorflow.so /output/
+cp -r $TF_DIR/bazel-out/k8-opt/bin/tensorflow/libtensorflow* /output/
