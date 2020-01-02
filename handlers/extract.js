@@ -5,6 +5,7 @@ const mktemp = require('mktemp')
 const {resolvePath, ensureDir, getOutputPath, createWriteStream} = require('../lib/fs')
 const expandTemplate = require('../lib/string-template')
 const {spawn} = require('child_process')
+const dateformat = require('dateformat')
 
 const ANALYZERS = require('./_analyzers')
 /*
@@ -34,6 +35,69 @@ const toDurationSpec = sec => {
     const m = Math.floor(sec / 60)
     const s = Math.floor(sec % 60)
     return `${m} min ${s} sec`
+}
+
+// predictSegmentWallClockFileName(inputPath, segmentStartTimeInSeconds)
+//   return wall-clock segment file name;
+//   return `null` if can not find date-time in inputPath.
+function predictSegmentWallClockFileName(inputPath, segmentStartTimeInSeconds) {
+    if (segmentStartTimeInSeconds < 0) {
+        return null
+    }
+
+    // should process all previously known default output filenames:
+    // earliest default (pre-2019): [idol]_[YYYY-MM-DD]_[JS Timestamp]
+    const reDashDateTimestamp = /(\d{4}-\d{2}-\d{2}).(\d{10,16})/
+    // second default (early 2019 - mid 2019): [idol]_[YYYY-MM-DD]_[hh-mm-ss]
+    const reDashDateDashTime = /(\d{4}-\d{2}-\d{2}).(\d{2}-\d{2}-\d{2})/
+    // current default (since mid 2019): [idol]_[YYYY-MM-DD]_[hhmmss]
+    const reDashDateTime = /(\d{4}-\d{2}-\d{2}).(\d{6})/
+
+    const inputBasename = basename(inputPath, extname(inputPath))
+
+    let match, refDateTime, replaceRegExp
+    if (match = reDashDateTimestamp.exec(inputBasename)) {
+        const timestamp = match[2]
+        refDateTime = new Date(parseInt(timestamp, 10))
+        replaceRegExp = reDashDateTimestamp
+    } else if (match = reDashDateDashTime.exec(inputBasename)) {
+        const [YYYY, MM, DD] = match[1].split('-').map(str => parseInt(str, 10))
+        const [hh, mm, ss] = match[2].split('-').map(str => parseInt(str, 10))
+        // check YYYY-MM-DD hh-mm-ss is reasonable
+        if ( 1 <= MM && MM <= 12
+          && 1 <= DD && DD <= 31
+          && 0 <= hh && hh <= 24
+          && 0 <= mm && mm <= 60
+          && 0 <= ss && ss <= 60
+        ) {
+            refDateTime = new Date(YYYY, MM-1, DD, hh, mm, ss, 0)
+            replaceRegExp = reDashDateDashTime
+        }
+    } else if (match = reDashDateTime.exec(inputBasename)) {
+        const [YYYY, MM, DD] = match[1].split('-').map(str => parseInt(str, 10))
+        const [hh, mm, ss] = match[2].match(/\d{2}/g).map(str => parseInt(str, 10))
+        if ( 1 <= MM && MM <= 12
+          && 1 <= DD && DD <= 31
+          && 0 <= hh && hh <= 24
+          && 0 <= mm && mm <= 60
+          && 0 <= ss && ss <= 60
+        ) {
+            refDateTime = new Date(YYYY, MM-1, DD, hh, mm, ss, 0)
+            replaceRegExp = reDashDateTime
+        }
+    } else {
+        // filename does not match any defaults
+        return null
+    }
+
+    // check refDateTime is truthy, and not invalid (NaN)
+    if (!refDateTime || refDateTime.valueOf() !== refDateTime.valueOf()) {
+        return null
+    }
+
+    const segmentStartTime = new Date(refDateTime.valueOf() + Math.max(1, segmentStartTimeInSeconds) * 1000)
+    const segmentStartTimeStr = dateformat(segmentStartTime, 'yyyy-mm-dd_HHMMss')
+    return inputBasename.replace(replaceRegExp, segmentStartTimeStr)
 }
 
 // return Promise -> analyzerResultPath
@@ -145,6 +209,7 @@ function mediaSpecIsStdin(media) {
 }
 
 module.exports = {
+    predictSegmentWallClockFileName,
     ANALYSIS_BACKENDS: ANALYZERS,
     yargs: yargs => yargs
         .usage('$0 pose <media> [options]')
@@ -207,10 +272,13 @@ module.exports = {
         .option('o', {
             alias: 'output',
             describe: `output file pattern, supports @var template
- : @base    -> media's base name (without extension)
- : @seq     -> segment sequence number
- : @ext     -> output format extension name`,
-            default: '@base_@seq.@ext'
+ : @auto     -> intelligent wall-clock name:
+ :              replace date-time in input path to the
+ :              wall clock when the segment starts.
+ : @base     -> media's base name (without extension)
+ : @seq      -> segment sequence number
+ : @ext      -> output format extension name`,
+            default: '@auto.@ext'
         })
         .option('f', {
             alias: 'format',
@@ -297,6 +365,7 @@ module.exports = {
             console.error(`  dur:    ${toDurationSpec(end-start)}`)
 
             const outputPath = getOutputPath(output, outputDir, {
+                auto: predictSegmentWallClockFileName(mediaBase, start) || `${mediaBase}_${seq}`,
                 base: mediaBase,
                 seq,
                 ext: format
