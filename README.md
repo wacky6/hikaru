@@ -10,6 +10,7 @@
 * [弹幕监听 / 超级弹幕姬](#弹幕监听--超级弹幕姬---dmk)
 * [身体姿势分析](#身体姿势分析---pose)
 * [热点片段截取](#热点片段截取---extract)
+* [自动上传](#自动上传-minio---uplink)
 * [示例（Docker）](#示例-docker环境)
 * [性能优化（针对Docker）](#性能优化)
 
@@ -110,12 +111,12 @@ hikaru extract <media> -t <type>
 
 更多选项用 `hikaru extract --help` 查看。
 
-## 自动上传至 Minio - uplink
+## 自动上传 Minio - uplink
 ```shell
-hikaru uplink -f [mtime_within] -e [extensions] <outdir> <minio_endpoint>
+hikaru uplink -f [mtime_within] -e [extensions] -O <outdir> <minio_endpoint>
 ```
 
-实现自动上传/自助获取录播，详见 [uplink/README.md]。
+实现自动上传/自助获取录播，详见 [uplink/README.md](uplink/README.md)。
 
 
 ## 示例 （Docker环境）
