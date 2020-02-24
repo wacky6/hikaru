@@ -1,0 +1,277 @@
+#!/usr/bin/env node
+
+const { promisify } = require('util')
+const { readdir: _readdir, stat: _stat } = require('fs')
+const readdir = promisify(_readdir)
+const stat = promisify(_stat)
+const { resolve, extname, basename } = require('path')
+
+const parseDuration = require('parse-duration')
+const Minio = require('minio')
+const asyncPool = require('tiny-async-pool')
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+async function checkFile(output) {
+    if (await stat(output).then(stats => stats.isFile()))
+        return [resolve(process.cwd, output)]
+    else
+        return []
+}
+
+async function filterFiles(outputDir, filters = []) {
+    let filesToReturn = []
+
+    const filterFn = async dirent => {
+        for (const filter of filters) {
+            if (!await filter(dirent))
+                return
+        }
+        filesToReturn.push(resolve(process.cwd, outputDir, dirent.name))
+    }
+
+    const dirents = await readdir(outputDir, {withFileTypes: true})
+    await asyncPool(128, dirents, filterFn)
+
+    return filesToReturn;
+}
+
+const MAX_RETRIES = 5
+const RETRY_DELAY = 1000 //60*1000    // Wait for 1 minute before retrying.
+const RETRY_COUNT_TO_INDICATOR = {
+    0: '🕐',
+    1: '🕒',
+    2: '🕔',
+    3: '🕖',
+    4: '🕘',
+    5: '🕚',
+}
+const DEFAULT_INDICATOR = '⏳'
+async function uploadFile(minioClient, bucket, canonicalPath, retries = 0) {
+    const fileName = basename(canonicalPath)
+
+    if (retries > MAX_RETRIES) {
+        console.error(`❌ Failed:    ${fileName}, max retry count reached.`)
+        return false
+    }
+
+    const retry_indicatior = RETRY_COUNT_TO_INDICATOR[retries] || DEFAULT_INDICATOR
+    if (retries)
+        console.error(`${retry_indicatior} Retrying:  ${fileName}, attempts = ${retries}/${MAX_RETRIES}`)
+    else
+        console.error(`${retry_indicatior} Uploading: ${fileName}`)
+
+    const result = await minioClient.fPutObject(bucket, fileName, canonicalPath)
+        .then(
+            etag => ({ ok: true, etag }),
+            error => ({ ok: false, error })
+        )
+
+    if (!result.ok) {
+        console.error(`⚠️  Errored:   ${fileName}, code = ${result.error.code}`)
+        await sleep(RETRY_DELAY)
+        return await uploadFile(minioClient, bucket, canonicalPath, retries + 1)
+    }
+
+    console.error(`☑️  Uploaded:  ${fileName}, etag = ${result.etag}`)
+    return true
+}
+
+function createFilters({outputDir, freshness, extension}) {
+    let filters = []
+
+    if (extension) {
+        const extensionList = extension
+            .split(',')
+            .map(ext => ext.trim().toLowerCase())
+            .filter(ext => ext)
+        if (!extensionList.length) {
+            console.error('❌ Empty extension. Please provide a comma-saperated extension name list (e.g. mp4,mkv)')
+            process.exit(0)
+        }
+
+        const extensionFilter = extensionList.includes('*')
+            ? dirent => dirent.isFile()
+            : dirent => dirent.isFile()
+                        && extensionList.includes( extname(dirent.name).toLowerCase().slice(1) )
+        filters.push(extensionFilter)
+    }
+
+    if (freshness) {
+        const mtimeNotBefore = Date.now() - parseDuration(freshness)
+        const mtimeFilter = dirent => stat(resolve(process.cwd, outputDir, dirent.name)).then(
+            stats => stats.mtimeMs >= mtimeNotBefore
+        )
+        filters.push(mtimeFilter)
+    }
+
+    return filters
+}
+
+function parseServerAndBucket(rawUrl) {
+    try {
+        const url = new URL(rawUrl)
+        const bucketName = url.pathname.split('/')[1]
+
+        // Check bucket name is well-formed
+        const bucketNameWellFormed = (
+                bucketName.match(/^[a-z0-9][a-z0-9.\-]{2,62}$/)
+            && !bucketName.endsWith('.')
+        )
+
+        if (!bucketNameWellFormed) {
+            if (bucketName)
+                console.error(`❌ Bucket name is invalid: ${bucketName}`)
+            else
+                console.error('❌ Bucket name not provided.')
+            process.exit(1)
+        }
+
+        return {
+            serverHost: url.hostname,
+            serverPort: url.port ? parseInt(url.port, 10) : undefined,
+            isHttps: url.protocol === 'https:',
+            bucket: bucketName
+        }
+    } catch(e) {
+        console.log(e)
+        console.error(`❌ Invalid endpoint URL: ${rawUrl}`)
+        process.exit(1)
+    }
+}
+
+module.exports = {
+    yargs: yargs => yargs
+        .usage(`${module.parent ? 'hikaru uplink' : 'hikaru-uplink'} <endpoint> [-O/-o]`)
+        .option('O', {
+            alias: 'output-dir',
+            describe: 'output-directory',
+            type: 'string',
+            nargs: 1,
+        })
+        .option('o', {
+            alias: 'output',
+            describe: 'output file',
+            type: 'string',
+            nargs: 1,
+        })
+        .conflicts('o', 'O')
+        .option('f', {
+            alias: 'freshness',
+            describe: 'filter so file is modified within freshness time, accepts time duration (i.e. 1 day)',
+            type: 'string',
+            nargs: 1,
+        })
+        .option('e', {
+            alias: 'extension',
+            describe: 'filter based on a comma-separated extension names. Use * as wildcard.',
+            nargs: 1,
+            type: 'string',
+            default: 'mp4,mkv',
+        })
+        .option('c', {
+            alias: 'concurrent-uploads',
+            describe: 'number of concurrent uploads to minio server',
+            default: 1,
+            type: 'number',
+            nargs: 1,
+        })
+        .positional('endpoint', {
+            describe: 'a minio-compatible server endpoint',
+            required: true,
+            type: 'string'
+        })
+        .positional('-O/-o', {
+            describe: 'directory or file to upload',
+            type: 'string',
+            default: null
+        })
+    ,
+    handler: async ({
+        outputDir,
+        output,
+        freshness,
+        extension = 'mp4,mkv',
+        concurrentUploads = 1,
+        endpoint,
+    }) => {
+        if (!endpoint) {
+            console.error('A minio-compatible <endpoint> must be provided.')
+            process.exit(1)
+        }
+
+        if (outputDir && output) {
+            console.error('--output-dir and --output are mutually exclusive.')
+            process.exit(1)
+        }
+
+        const accessKey = process.env.ACCESS_KEY
+        const accessSecret = process.env.ACCESS_SECRET
+
+        if (!accessKey || !accessSecret) {
+            console.error('ACCESS_KEY and ACCESS_SECRET must be provided.')
+            process.exit(1)
+        }
+
+
+        const filesToUpload = outputDir ? await filterFiles(outputDir, createFilters({outputDir, extension, freshness}))
+                                        : await checkFile(output)
+
+        if (!filesToUpload.length) {
+            console.error('☑  Nothing to upload.')
+            process.exit(0)
+        }
+
+        const { serverHost, serverPort, isHttps, bucket } = parseServerAndBucket(endpoint)
+
+        if (!isHttps)
+            console.log(`⚠️  Inseucre connection used: ${endpoint}`)
+
+        const minioClient = new Minio.Client({
+            endPoint: serverHost,
+            port: serverPort,
+            useSSL: isHttps,
+            accessKey,
+            secretKey: accessSecret
+        })
+
+        // Check bucket exists.
+        const bucketExists = await minioClient.bucketExists(bucket)
+            .then(
+                exists => exists,
+                error => {
+                    console.error(`❌ Minio Error: ${error.code}`)
+                    return false
+                }
+            )
+
+        if (!bucketExists) {
+            console.error('❌ Minio bucket not found.')
+            process.exit(5)
+        }
+
+        const results = await asyncPool(concurrentUploads, filesToUpload, (canonicalPath) => uploadFile(minioClient, bucket, canonicalPath))
+        const nSuccess = results.filter(result => result).length
+        console.error('✅ All done.')
+        if (nSuccess == results.length)
+            console.error(`🎉 Success = ${nSuccess} / Total = ${results.length}.`)
+        else
+            console.error(`🤨 Success = ${nSuccess} / Total = ${results.length}.`)
+
+        process.exit(0)
+    },
+}
+
+if (!module.parent) {
+    const { handler, yargs } = module.exports
+
+    require('yargs')
+        .command({
+            command: '$0 <endpoint> [-O/-o ...]',
+            builder: yargs,
+            handler,
+        })
+        .demandCommand(1, 'A minio-compatible endpoint must be provided')
+        .help()
+        .argv
+}

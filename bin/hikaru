@@ -7,6 +7,7 @@ const DAEMON = require('../handlers/daemon')
 const DMK = require('../handlers/dmk')
 const POSE = hasPosenetSupport ? require('../handlers/pose') : null
 const EXTRACT = hasPosenetSupport ? require('../handlers/extract') : null
+const UPLINK = require('../uplink/')
 
 const { parseArgsStringToArgv } = require('string-argv')
 
@@ -30,6 +31,7 @@ let yargChain = require('yargs')
     .command('run <room_id>', 'Capture live', RUN.yargs, RUN.handler)
     .command('daemon <room_id>', 'Monitor idol', DAEMON.yargs, DAEMON.handler)
     .command('dmk <room_id..>', 'Monitor danmaku channel', DMK.yargs, DMK.handler)
+    .command('uplink <endpoint> [-O/-o]', 'Upload captured videos', UPLINK.yargs, UPLINK.handler)
 
 if (hasPosenetSupport) {
     yargChain = yargChain

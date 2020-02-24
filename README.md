@@ -110,6 +110,13 @@ hikaru extract <media> -t <type>
 
 更多选项用 `hikaru extract --help` 查看。
 
+## 自动上传至 Minio - uplink
+```shell
+hikaru uplink -f [mtime_within] -e [extensions] <outdir> <minio_endpoint>
+```
+
+实现自动上传/自助获取录播，详见 [uplink/README.md]。
+
 
 ## 示例 （Docker环境）
 ```shell

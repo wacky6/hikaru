@@ -4,5 +4,8 @@ node_modules
 posenet/mobilenet*
 posenet/build-tf
 posenet/libtensorflow.*
+posenet/test
+posenet/.config
 .vscode
+.circleci
 test/

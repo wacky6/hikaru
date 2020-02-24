@@ -1,0 +1,17 @@
+{
+  "name": "hikaru-uplink",
+  "version": "0.1.0",
+  "description": "A helper to automatically upload files to Minio compatible server",
+  "bin": {
+    "hikaru": "bin/hikaru"
+  },
+  "main": "bin/hikaru-uplink",
+  "author": "Jiewei Qian <qjw@wacky.one>",
+  "license": "GPL-3.0",
+  "dependencies": {
+    "minio": "^7.0.14",
+    "parse-duration": "^0.1.2",
+    "tiny-async-pool": "^1.1.0",
+    "yargs": "^15.1.0"
+  }
+}

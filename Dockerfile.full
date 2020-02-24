@@ -23,6 +23,7 @@ WORKDIR /root/
 
 # copy files what are necessary to build dependency
 COPY package.json yarn.lock /hikaru/
+COPY uplink/package.json uplink/yarn.lock /hikaru/uplink/
 COPY posenet/checkpoints.js posenet/package.json posenet/yarn.lock /hikaru/posenet/
 
 RUN mkdir -p /root/hikaru/ && \

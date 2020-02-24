@@ -9,6 +9,7 @@ USER root
 WORKDIR /root/
 
 COPY package.json yarn.lock /hikaru/
+COPY uplink/package.json uplink/yarn.lock /hikaru/uplink/
 RUN mkdir -p /root/hikaru/ && \
     apk add --no-cache curl ffmpeg tzdata && \
     cp /usr/share/zoneinfo/${TZ} /etc/localtime && \
@@ -20,6 +21,7 @@ RUN mkdir -p /root/hikaru/ && \
 COPY bin /hikaru/bin
 COPY handlers /hikaru/handlers
 COPY lib /hikaru/lib
+COPY uplink /hikaru/uplink
 COPY modular-support.js LICENSE README.md /hikaru/
 
 ENTRYPOINT ["/hikaru/bin/hikaru"]
