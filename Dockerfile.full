@@ -11,29 +11,30 @@ WORKDIR /root/
 # copy files for node_modules dependencies
 COPY package.json yarn.lock /hikaru/
 COPY uplink/package.json uplink/yarn.lock /hikaru/uplink/
-COPY posenet/checkpoints.js posenet/package.json posenet/yarn.lock /hikaru/posenet/
+COPY posenet/checkpoints.js posenet/package.json posenet/yarn.lock posenet/pose-seg.py /hikaru/posenet/
 
-ARG BUILD_PKGS="\
-    build-base ffmpeg-dev git python2 cairo-dev pango-dev tzdata libjpeg-turbo-dev \
-"
-
-ARG RUNTIME_PKGS="\
-    curl ffmpeg python3 cairo pango libjpeg-turbo \
-"
-
-ARG APK_TESTING_RUNTIME_PKG="\
-    py3-scipy py3-numpy py3-scikit-learn py3-matplotlib \
-"
+ARG BUILD_PKGS="build-base ffmpeg-dev git python2 cairo-dev pango-dev tzdata libjpeg-turbo-dev upx"
+ARG RUNTIME_PKGS="curl ffmpeg python3 cairo pango libjpeg-turbo"
+ARG APK_TESTING_BUILD_PKGS="py3-scipy py3-numpy py3-scikit-learn py3-matplotlib"
+ARG PIP3_BUILD_PKGS="joblib==0.11 pyinstaller"
 
 RUN mkdir -p /root/hikaru/ && \
     apk add --no-cache ${BUILD_PKGS} ${RUNTIME_PKGS} && \
-    apk add --no-cache -X http://dl-cdn.alpinelinux.org/alpine/edge/testing ${APK_TESTING_RUNTIME_PKG} && \
-    pip3 install joblib && \
+    apk add --no-cache -X http://dl-cdn.alpinelinux.org/alpine/edge/testing ${APK_TESTING_BUILD_PKGS} && \
+    pip3 install ${PIP3_BUILD_PKGS} && \
     cp /usr/share/zoneinfo/${TZ} /etc/localtime && \
     echo ${TZ} > /etc/timezone && \
     ( cd /hikaru/ ; yarn install ) && \
-    apk del ${BUILD_PKGS} && \
-    rm -rf "/tmp/*"
+    pyinstaller -s -F \
+        --hidden-import="sklearn.utils._cython_blas" \
+        --distpath /tmp/dist \
+        --workpath=/tmp/pyinstaller-build \
+        --specpath=/tmp/pyinstaller-spec \
+        /hikaru/posenet/pose-seg.py && \
+    mv /tmp/dist/pose-seg /hikaru/posenet/pose-seg-bin && \
+    pip3 uninstall -y ${PIP3_BUILD_PKGS} && \
+    apk del ${BUILD_PKGS} ${APK_TESTING_BUILD_PKGS} && \
+    rm -rf "/tmp/*" "/hikaru/posenet/__pycache__/"
 
 COPY . /hikaru/
 
