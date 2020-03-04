@@ -15,7 +15,8 @@ RUN mkdir -p /root/hikaru/ && \
     cp /usr/share/zoneinfo/${TZ} /etc/localtime && \
     echo ${TZ} > /etc/timezone && \
     apk del tzdata && \
-    ( cd /hikaru/ ; yarn install )
+    ( cd /hikaru/ ; yarn install ) && \
+    yarn cache clean
 
 # TODO: should request docker upstream to support COPY exclusion
 COPY bin /hikaru/bin
