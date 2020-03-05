@@ -15,4 +15,4 @@ jobs:
       - run:
           name: Testing built container
           command: |
-            docker run -w /hikaru/ --entrypoint yarn hikaru-test test
+            docker run -w /hikaru/ --entrypoint /bin/sh hikaru-test -c 'cd /hikaru; yarn add tape --ignore-scripts && yarn test'

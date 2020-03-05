@@ -44,9 +44,8 @@ test('extract plumbing works', async t => {
 
 test('pose segmentation dump', async t => {
     spawnSync(
-        'python3',
+        resolve(__dirname, '../pose-seg'),
         [
-            resolve(__dirname, '../pose-seg.py'),
             resolve(__dirname, 'pose_test_sample.csv'),
             '-d',
             resolve(__dirname, '/tmp/out.png')
