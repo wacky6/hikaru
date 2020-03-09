@@ -12,7 +12,6 @@
 * [热点片段截取](#热点片段截取---extract)
 * [自动上传](#自动上传-minio---uplink)
 * [示例（Docker）](#示例-docker环境)
-* [性能优化（针对Docker）](#性能优化)
 
 ---
 
@@ -20,7 +19,7 @@
 提供两个版本的镜像tag，请按照需求选择：
 
 `wacky6/hikaru:lite` 仅提供**基础录屏**功能（仅daemon和dmk），镜像大小 ~120MB \
-`wacky6/hikaru:full` 提供完整功能（包括自动提取），镜像大小 ~1.2GB
+`wacky6/hikaru:full` 提供完整功能（包括自动提取），镜像大小 ~400MB
 
 ```shell
 docker pull wacky6/hikaru:<tag>
@@ -111,6 +110,7 @@ hikaru extract <media> -t <type>
 
 更多选项用 `hikaru extract --help` 查看。
 
+
 ## 自动上传 Minio - uplink
 ```shell
 hikaru uplink -f [mtime_within] -e [extensions] -O <outdir> <minio_endpoint>
@@ -184,12 +184,6 @@ docker run \
   -O '/cache/extracted-922045' \
   '/storage/焦小玲珑/2018-09-04_180519.flv'
 ```
-
-
-## 性能优化
-根据 [posenet/build-tf](https://github.com/wacky6/hikaru/tree/master/posenet/build-tf) 中的指令构建优化后的tensorflow运行时，然后用Docker的`-v`/`--mount`指令挂载输出的libtensorflow.so到容器的`/lib/libtensorflow.so`
-
-默认参数下，AMD X3621获得 ~30% 提升，i7 6700HQ获得 ~50% 提升。
 
 
 ## LICENSE
