@@ -7,7 +7,10 @@ posenet/mobilenet*
 posenet/build-tf
 posenet/libtensorflow.*
 posenet/test
+posenet/ipynb
+posenet/node_modules
 posenet/.config
+uplink/node_modules
 .vscode
 .circleci
 test/

@@ -59,7 +59,9 @@ class LocalModelWeights {
 }
 
 async function localLoad(multiplier = 0.75) {
-    tfjs = require('@tensorflow/tfjs-node')
+    tfjs = require('@tensorflow/tfjs')
+    require('@tensorflow/tfjs-backend-wasm')
+    await tfjs.setBackend('wasm')
     const {checkpoints, MobileNet, PoseNet} = require('@tensorflow-models/posenet')
     const checkpoint = checkpoints[multiplier]
     const checkpointLoader = new LocalCheckpointLoader(checkpoint.url)
