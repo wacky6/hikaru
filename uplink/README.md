@@ -58,16 +58,16 @@ Accepts time duration, examples:
 | 12h | 12 hrs         |
 | 1w  | 1 week         |
 
-### Extension / '-e'
+### Extension / `-e`
 Files whose extension matches the provided list will be uploaded.
 
 Accepts comma saperated extension list, for example: `mp4,mkv`.
 
 
-### Output Dir / '-O'
+### Output Dir / `-O`
 Specify the directory to scan. This will apply Freshness and Extension filtering.
 
-### Output File / '-o'
+### Output File / `-o`
 Upload a single file, ignoring Freshness and Extension filtering.
 
 
