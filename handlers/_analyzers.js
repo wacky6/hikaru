@@ -51,9 +51,8 @@ module.exports = {
         },
         segmentFile: (analyzeResultPath, args, verboseBasepath) => new Promise((resolve, reject) => {
             let exitCode = null
-            execFile('/usr/bin/env', [
-                'python3',
-                resolvePath(dirname(HIKARU_EXEC), '../posenet/pose-seg.py'),
+            execFile(
+                resolvePath(dirname(HIKARU_EXEC), '../posenet/pose-seg'), [
                 analyzeResultPath,
                 ...parseArgsStringToArgv(args || ''),
                 ...(

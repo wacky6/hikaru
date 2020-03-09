@@ -3,37 +3,63 @@ LABEL maintainer="Jiewei Qian <qjw@wacky.one>"
 
 ENV HIKARU_DEFAULT_AMQP="amqp://rabbitmq/" \
     HIKARU_DEFAULT_MONGO="mongodb://mongo/hikaru" \
-    TZ="Asia/Shanghai"
+    TZ="Asia/Shanghai" \
+    NODE_ENV="production"
 
 USER root
 WORKDIR /root/
 
-# copy files for node_modules dependencies
+# copy files for node_modules dependencies.
 COPY package.json yarn.lock /hikaru/
 COPY uplink/package.json uplink/yarn.lock /hikaru/uplink/
-COPY posenet/checkpoints.js posenet/package.json posenet/yarn.lock /hikaru/posenet/
+COPY posenet/checkpoints.js posenet/package.json posenet/yarn.lock posenet/pose-seg.py /hikaru/posenet/
 
-ARG BUILD_PKGS="\
-    build-base ffmpeg-dev git python2 cairo-dev pango-dev tzdata libjpeg-turbo-dev \
-"
-
-ARG RUNTIME_PKGS="\
-    curl ffmpeg python3 cairo pango libjpeg-turbo \
-"
-
-ARG APK_TESTING_RUNTIME_PKG="\
-    py3-scipy py3-numpy py3-scikit-learn py3-matplotlib \
-"
+ARG BUILD_PKGS="build-base ffmpeg-dev git python2 cairo-dev pango-dev tzdata libjpeg-turbo-dev upx python3 pwgen libc-dev zlib-dev libffi-dev tar gzip"
+ARG RUNTIME_PKGS="curl ffmpeg cairo pango libjpeg-turbo"
+ARG APK_EDGE_BUILD_PKGS="py3-scipy py3-numpy py3-scikit-learn py3-matplotlib"
+ARG PYINSTALLER_DIST="https://github.com/pyinstaller/pyinstaller/releases/download/v3.6/PyInstaller-3.6.tar.gz"
+ARG PIP3_BUILD_PKGS="joblib==0.11"
 
 RUN mkdir -p /root/hikaru/ && \
+    : Install binary dependencies && \
     apk add --no-cache ${BUILD_PKGS} ${RUNTIME_PKGS} && \
-    apk add --no-cache -X http://dl-cdn.alpinelinux.org/alpine/edge/testing ${APK_TESTING_RUNTIME_PKG} && \
-    pip3 install joblib && \
+    apk add --no-cache \
+        -X http://dl-cdn.alpinelinux.org/alpine/edge/community \
+        -X http://dl-cdn.alpinelinux.org/alpine/edge/testing \
+        ${APK_EDGE_BUILD_PKGS} && \
+    pip3 install ${PIP3_BUILD_PKGS} && \
+    : Build PyInstaller && \
+    mkdir /tmp/pyinstaller && \
+    curl -L ${PYINSTALLER_DIST} | gunzip | tar x -C /tmp/pyinstaller/ --strip-components=1 && \
+    ( cd /tmp/pyinstaller/bootloader ; python ./waf all && pip3 install .. ) && \
+    : Setup Timezone && \
     cp /usr/share/zoneinfo/${TZ} /etc/localtime && \
     echo ${TZ} > /etc/timezone && \
+    : Install node dependencies && \
     ( cd /hikaru/ ; yarn install ) && \
-    apk del ${BUILD_PKGS} && \
-    rm -rf "/tmp/*"
+    : Delete source maps, esm.js, min.js  && \
+    rm -rf $( find \
+            -name '*.map' \
+        -or -name '*.ts' \
+        -or -name '*.esm.js' \
+        -or -name '*.min.js' \
+        -or -name 'src' \
+    ) && \
+    : Build pose-seg script && \
+    pyinstaller -s -F \
+        --hidden-import="sklearn.utils._cython_blas" \
+        --distpath /tmp/dist \
+        --workpath=/tmp/pyinstaller-build \
+        --specpath=/tmp/pyinstaller-spec \
+        /hikaru/posenet/pose-seg.py && \
+    mv /tmp/dist/pose-seg /hikaru/posenet/pose-seg-bin && \
+    : Cleanup temp files and build dependencies && \
+    yarn cache clean && \
+    pip3 uninstall -y ${PIP3_BUILD_PKGS} pyinstaller && \
+    apk del ${BUILD_PKGS} ${APK_EDGE_BUILD_PKGS} && \
+    rm -rf /tmp /hikaru/posenet/__pycache__/ && \
+    (cd ~ ; rm -rf .npm .cache .config .gnupg ) && \
+    mkdir /tmp
 
 COPY . /hikaru/
 

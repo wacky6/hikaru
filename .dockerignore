@@ -10,6 +10,7 @@ posenet/test
 posenet/ipynb
 posenet/node_modules
 posenet/.config
+memenet/
 uplink/node_modules
 .vscode
 .circleci

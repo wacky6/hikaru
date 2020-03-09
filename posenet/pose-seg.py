@@ -6,7 +6,7 @@ from scipy.signal import medfilt
 from scipy.interpolate import interp1d
 from math import floor
 import scipy.ndimage.morphology as morphology
-import sys
+from sys import exit
 import os
 import traceback
 
