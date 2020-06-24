@@ -7,6 +7,7 @@ from scipy.interpolate import interp1d
 from math import floor
 import scipy.ndimage.morphology as morphology
 from sys import exit
+import sys
 import os
 import traceback
 
@@ -48,13 +49,11 @@ def plot_c(ax1, c, c2, t, mode_c, thresh_c, clabel = ''):
     if thresh_c:
         ax1.axhline(y=thresh_c, color='r', linewidth=2)
 
-def compute_volatility(a, window = 0.85):
-    a = np.sort(a)
-    n_drop = min(3, round(len(a) * (1-window) / 2))
+def compute_number_of_static_frames(a, threshold = 1):
+    diff = np.diff(a)
+    static_samples = diff[diff < threshold]
 
-    # compute relative deviation of `window` portion of samples
-    a = a[n_drop: len(a)-n_drop]
-    return np.std(a) / np.mean(a)
+    return len(static_samples)
 
 def seg_pose(csvpath, dump):
     THRESHOLD_EYE = 0.8
@@ -169,6 +168,7 @@ def seg_pose(csvpath, dump):
             start_t, start_i = cur_start
             end_t, end_i = t[i], i
             duration = end_t - start_t
+            frames = end_i - start_i
 
             cur_start = None    # unmark start position for next iteration
 
@@ -176,10 +176,10 @@ def seg_pose(csvpath, dump):
             n_expected_samples = floor((end_t - start_t) / intra_frame_interval) + 1
             sample_ratio = n_actual_samples / n_expected_samples
 
-            volatility = np.mean([
-                compute_volatility(eye[start_i:end_i+1]),
-                compute_volatility(ear[start_i:end_i+1]),
-                compute_volatility(sld[start_i:end_i+1]),
+            static_duration = duration / frames * np.mean([
+                compute_number_of_static_frames(eye[start_i:end_i+1]),
+                compute_number_of_static_frames(ear[start_i:end_i+1]),
+                compute_number_of_static_frames(sld[start_i:end_i+1]),
             ])
 
             if duration > 600:
@@ -195,8 +195,8 @@ def seg_pose(csvpath, dump):
                 ignored_segments.append((start_t, end_t, 'valid samples', 'S'))
                 continue
 
-            if volatility < 0.08:
-                print(f'Ignore segment {round(start_t, 3)} to {round(end_t, 3)}, too small volatility, r_vol = {volatility.round(5)}', file=sys.stderr)
+            if static_duration > 0.8 * duration:
+                print(f'Ignore segment {round(start_t, 3)} to {round(end_t, 3)}, too many static frames, static_duration = {round(static_duration, 2)}, ratio = {round(static_duration / duration, 2)}', file=sys.stderr)
                 ignored_segments.append((start_t, end_t, 'volatility', 'V'))
                 continue
 
