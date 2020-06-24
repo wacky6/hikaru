@@ -1,6 +1,6 @@
 {
   "name": "hikaru",
-  "version": "0.18.1",
+  "version": "0.18.2",
   "description": "Bilibili Live Capturer",
   "bin": {
     "hikaru": "bin/hikaru"
