@@ -18,12 +18,12 @@
 ## Docker 用法
 提供两个版本的镜像tag，请按照需求选择：
 
-`wacky6/hikaru:lite` 仅提供**基础录屏**功能（仅daemon和dmk），镜像大小 ~120MB \
-`wacky6/hikaru:full` 提供完整功能（包括自动提取），镜像大小 ~400MB
+`ghcr.io/wacky6/hikaru:lite` 仅提供**基础录屏**功能（仅daemon和dmk），镜像大小 ~120MB \
+`ghcr.io/wacky6/hikaru:full` 提供完整功能（包括自动提取），镜像大小 ~650MB
 
 ```shell
-docker pull wacky6/hikaru:<tag>
-docker run -v <local_dir>:/root/hikaru/ wacky6/hikaru <command> [args...]
+docker pull ghcr.io/wacky6/hikaru:<tag>
+docker run -v <local_dir>:/root/hikaru/ ghcr.io/wacky6/hikaru <command> [args...]
 ```
 
 在指令后追加 `--help` 选项查看帮助，参见[Docker示例](#示例-docker环境)
@@ -129,7 +129,7 @@ docker run \
   --restart=always -itd \
   --name hikaru-922045 \
   -v /storage/hikaru/焦小玲珑:/root/hikaru \
-  wacky6/hikaru:lite daemon 922045 \
+  ghcr.io/wacky6/hikaru:lite daemon 922045 \
   -t 03108991:ABCDEFGHIJKLMN:19950418 \
   -T https://tg-api.example.com/
 ```
@@ -144,7 +144,7 @@ docker run \
   --restart=always -itd \
   --name hikaru-dmk-r1 \
   -v /storage/hikaru/dmk:/data \
-  wacky6/hikaru:lite dmk \
+  ghcr.io/wacky6/hikaru:lite dmk \
   -r 1 \
   -pbR \
   -l '/data/dmk-@roomid.log' \
@@ -162,7 +162,7 @@ docker run \
   --name hikaru-dance-424902 \
   -v /storage/hikaru/424902:/root/hikaru \
   -v /cache/extracted:/root/hikaru/extracted \
-  wacky6/hikaru:full daemon 424902 \
+  ghcr.io/wacky6/hikaru:full daemon 424902 \
   -r \
   -x dance -X '-p -d -f mp4'
 ```
@@ -178,7 +178,7 @@ docker run \
   -v /storage:/storage \
   -v /cache:/cache \
   -v /root/libtensorflow.native:/lib/libtensorflow.so
-  wacky6/hikaru:full extract \
+  ghcr.io/wacky6/hikaru:full extract \
   -f mp4 \
   -pd \
   -O '/cache/extracted-922045' \

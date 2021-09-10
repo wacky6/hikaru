@@ -1,4 +1,5 @@
 version: 2
+
 jobs:
   build:
     docker:
@@ -8,8 +9,8 @@ jobs:
       - setup_remote_docker:
           version: 20.10.7
       - run:
-          name: Override .dockerignore
-          command: rm -f .dockerignore
+          name: Stash .dockerignore
+          command: mv .dockerignore .dockerignore.stash
       - run:
           name: Build container image
           command: docker build . -t hikaru-test -f Dockerfile.full
@@ -17,3 +18,9 @@ jobs:
           name: Testing built container
           command: |
             docker run -w /hikaru/ --entrypoint /bin/sh hikaru-test -c 'cd /hikaru; yarn add tape --ignore-scripts && yarn test'
+      - run:
+          name: Prepare for release build
+          command: mv .dockerignore.stash .dockerignore
+      - run:
+          name: Build and publish release images
+          command: ./build-publish.sh
