@@ -5,7 +5,8 @@ jobs:
       - image: circleci/node
     steps:
       - checkout
-      - setup_remote_docker
+      - setup_remote_docker:
+          version: 20.10.7
       - run:
           name: Override .dockerignore
           command: rm -f .dockerignore

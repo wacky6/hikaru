@@ -14,10 +14,10 @@ COPY package.json yarn.lock /hikaru/
 COPY uplink/package.json uplink/yarn.lock /hikaru/uplink/
 COPY posenet/checkpoints.js posenet/package.json posenet/yarn.lock posenet/pose-seg.py /hikaru/posenet/
 
-ARG BUILD_PKGS="build-base ffmpeg-dev git python2 cairo-dev pango-dev tzdata libjpeg-turbo-dev upx python3 pwgen libc-dev zlib-dev libffi-dev tar gzip"
-ARG RUNTIME_PKGS="curl ffmpeg cairo pango libjpeg-turbo"
-ARG APK_EDGE_BUILD_PKGS="py3-scipy py3-numpy py3-scikit-learn py3-matplotlib"
-ARG PYINSTALLER_DIST="https://github.com/pyinstaller/pyinstaller/releases/download/v3.6/PyInstaller-3.6.tar.gz"
+ARG BUILD_PKGS="build-base ffmpeg-dev git python2 cairo-dev pango-dev \
+    tzdata libjpeg-turbo-dev py3-pip pwgen libc-dev zlib-dev libffi-dev tar gzip"
+ARG RUNTIME_PKGS="curl ffmpeg cairo pango libjpeg-turbo \
+    python3 py3-scipy py3-numpy py3-scikit-learn py3-matplotlib"
 ARG PIP3_BUILD_PKGS="joblib==0.11"
 
 RUN mkdir -p /root/hikaru/ && \
@@ -25,13 +25,8 @@ RUN mkdir -p /root/hikaru/ && \
     apk add --no-cache ${BUILD_PKGS} ${RUNTIME_PKGS} && \
     apk add --no-cache \
         -X http://dl-cdn.alpinelinux.org/alpine/edge/community \
-        -X http://dl-cdn.alpinelinux.org/alpine/edge/testing \
-        ${APK_EDGE_BUILD_PKGS} && \
+        -X http://dl-cdn.alpinelinux.org/alpine/edge/testing && \
     pip3 install ${PIP3_BUILD_PKGS} && \
-    : Build PyInstaller && \
-    mkdir /tmp/pyinstaller && \
-    curl -L ${PYINSTALLER_DIST} | gunzip | tar x -C /tmp/pyinstaller/ --strip-components=1 && \
-    ( cd /tmp/pyinstaller/bootloader ; python ./waf all && pip3 install .. ) && \
     : Setup Timezone && \
     cp /usr/share/zoneinfo/${TZ} /etc/localtime && \
     echo ${TZ} > /etc/timezone && \
@@ -45,18 +40,9 @@ RUN mkdir -p /root/hikaru/ && \
         -or -name '*.min.js' \
         -or -name 'src' \
     ) && \
-    : Build pose-seg script && \
-    pyinstaller -s -F \
-        --hidden-import="sklearn.utils._cython_blas" \
-        --distpath /tmp/dist \
-        --workpath=/tmp/pyinstaller-build \
-        --specpath=/tmp/pyinstaller-spec \
-        /hikaru/posenet/pose-seg.py && \
-    mv /tmp/dist/pose-seg /hikaru/posenet/pose-seg-bin && \
     : Cleanup temp files and build dependencies && \
     yarn cache clean && \
-    pip3 uninstall -y ${PIP3_BUILD_PKGS} pyinstaller && \
-    apk del ${BUILD_PKGS} ${APK_EDGE_BUILD_PKGS} && \
+    apk del ${BUILD_PKGS} && \
     rm -rf /tmp /hikaru/posenet/__pycache__/ && \
     (cd ~ ; rm -rf .npm .cache .config .gnupg ) && \
     mkdir /tmp
