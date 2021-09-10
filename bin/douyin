@@ -1,0 +1,73 @@
+#!/usr/bin/env node
+
+const agent = require('superagent')
+const { spawn } = require('child_process')
+const fs = require('fs')
+const dateformat = require('dateformat')
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+const ROOM_ID = '123nana1234'
+
+const USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36'
+const RESPONSE_DEADLINE = 10000    // 10s deadline
+const POLL_INTERVAL = 60 * 1000
+const ERROR_DELAY = 5000
+
+;(async () => {
+    while (true) {
+        try {
+            const landingUrl = `https://live.douyin.com/${ROOM_ID}`
+            const htmlPage = await agent
+                .get(landingUrl)
+                .set('user-agent', USER_AGENT)
+                .timeout(RESPONSE_DEADLINE)
+
+            const re = /<script id="RENDER_DATA"(?: type="application\/json")?>([^<]*)<\/script>/
+            const match = re.exec(htmlPage.text)[1]
+            const json = JSON.parse(decodeURIComponent(match))
+            const roomObj = json.initialState.roomStore.roomInfo.room
+
+            if (!roomObj.stream_url) {
+                console.error(`${ROOM_ID}: Not streaming.`)
+                await sleep(POLL_INTERVAL)
+                continue
+            }
+
+            // Start capturing.
+            const streamConfig = roomObj.stream_url
+            const flvUrls = streamConfig.flv_pull_url
+
+            const pullUrl = flvUrls['FULL_HD1'] || flvUrls[streamConfig.default_resolution]
+
+            const flvTime = dateformat(new Date(), 'yyyy-mm-dd_HHMMss')
+            const outName = `/data/${ROOM_ID}_${flvTime}.flv`
+            const outStream = fs.createWriteStream(outName)
+
+            console.error(`${ROOM_ID}: Streaming ${pullUrl} -> ${outName}`)
+
+            const args = [
+                '-L',    // follow redirect
+                '-S',    // print error
+                '-y',    // speed time, used to kill stagnated stream
+                '10',    //     10s
+                '-Y',    // speed limit, used to detect stagnated stream
+                '10000', //     10 kB/s, estimated from basic audio stream bitrate (~128kbps -> 16kB/s)
+                '-H',    // fake a realistic UA
+                `User-Agent: ${USER_AGENT}`,
+                '-H',    // fake referer, in case of CDN wanting it
+                `Referer: ${landingUrl}`,
+                pullUrl,
+            ]
+
+            const child = spawn('curl', args, { stdio: ['ignore', 'pipe', 'pipe'] })
+            child.stderr.pipe(process.stderr)
+            child.stdout.pipe(outStream)
+
+            await new Promise(resolve => outStream.once('close', _ => resolve(true)))
+        } catch(e) {
+            console.error(e.message)
+            console.error(e.stack)
+            await sleep(ERROR_DELAY)
+        }
+    }
+})()
