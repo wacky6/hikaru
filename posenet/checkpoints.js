@@ -1,8 +1,8 @@
 // should only contain built-in imports/requires
 
-const fs = require('fs')
-const agent = require('superagent')
+const fs = require('fs/promises')
 const path = require('path')
+const axios = require('axios')
 
 const GOOGLE_STORAGE_DIR = 'https://storage.googleapis.com/tfjs-models/weights/posenet/'
 const CHECKPOINT_DIRS = [
@@ -10,29 +10,26 @@ const CHECKPOINT_DIRS = [
     'mobilenet_v1_050/'
 ]
 
-const downloadUrlToPath = (url, localPath, trial = 0) => new Promise((resolve, reject) => {
-    if (trial === 5) {
-        return reject(new Error('Retry Count Exceeded.'))
-    }
+async function downloadUrlToPath(url, localPath, trial = 0) {
+    if (trial === 5)
+        throw new Error('Retry count exceeded.')
 
-    agent.get(url).responseType('blob').then(
-        res => {
-            if (!res.ok) {
-                process.stderr.write('!')
-                console.error(`\n${res.statusCode} \t ${url}`)
-                reject(new Error('Non OK Response Code'))
-            } else {
-                process.stderr.write('.')
-            }
-
-            fs.writeFile(localPath, res.body, resolve)
-        },
-        _ => {
-            process.stderr.write('r')
-            downloadUrlToPath(url, localPath, trial + 1)
+    try {
+        const res = await axios.get(url, {responseType: 'arraybuffer'})
+        if (res.status !== 200) {
+            process.stderr.write('!')
+            console.error(`\n${res.statusCode} \t ${url}`)
+            throw new Error('Non OK Response Code')
         }
-    )
-})
+
+        process.stderr.write('.')
+        await fs.writeFile(localPath, res.data)
+    } catch (e) {
+        console.log(e.stack)
+        process.stderr.write('r')
+        await downloadUrlToPath(url, localPath, trial + 1)
+    }
+}
 
 async function fetchCheckpoints() {
     console.error('Fetching PoseNet Model:')
@@ -40,13 +37,13 @@ async function fetchCheckpoints() {
         for (let checkpoint_dir of CHECKPOINT_DIRS) {
             const baseDir = path.resolve(__dirname, checkpoint_dir) + '/'
             const urlBaseDir = checkpoint_dir
-            fs.mkdirSync(baseDir, { recursive: true })
+            await fs.mkdir(baseDir, { recursive: true })
 
             const manifestUrl = `${GOOGLE_STORAGE_DIR}${urlBaseDir}manifest.json`
             const manifestLocalPath = `${baseDir}manifest.json`
             await downloadUrlToPath(manifestUrl, manifestLocalPath)
 
-            const manifest = JSON.parse(fs.readFileSync(manifestLocalPath, {encoding: 'utf-8'}))
+            const manifest = JSON.parse(await fs.readFile(manifestLocalPath, {encoding: 'utf-8'}))
             await Promise.all(
                 Object.keys(manifest).map(variableName => {
                     const {filename} = manifest[variableName]

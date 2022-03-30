@@ -14,9 +14,9 @@
     "@tensorflow-models/posenet": "^1.0.3",
     "@tensorflow/tfjs": "^1.5.2",
     "@tensorflow/tfjs-backend-wasm": "^1.5.2-alpha1",
+    "axios": "^0.26.1",
     "beamcoder": "https://github.com/wacky6/beamcoder",
-    "canvas": "^2.6.0",
-    "superagent": "^3.8.3"
+    "canvas": "^2.6.0"
   },
   "devDependencies": {
     "tape": "^4.9.1"

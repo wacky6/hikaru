@@ -15,13 +15,13 @@
   "license": "GPL-3.0",
   "dependencies": {
     "amqplib": "^0.5.3",
+    "axios": "^0.26.1",
     "dateformat": "^3.0.3",
     "mkdirp": "^0.5.1",
     "mktemp": "^1.0.0",
     "mongodb": "^3.1.10",
     "shuffle-array": "^1.0.1",
     "string-argv": "^0.3.0",
-    "superagent": "^3.8.3",
     "ws": "^6.0.0",
     "yargs": "^15.1.0"
   },

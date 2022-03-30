@@ -3,15 +3,5 @@
 # A simple wrapper to run pose-seg.py
 #
 
-POSE_SEG_BIN=$( realpath $(dirname $0)/pose-seg-bin )
 POSE_SEG_PY=$( realpath $(dirname $0)/pose-seg.py )
-
-[ -x "$POSE_SEG_BIN" ] && HAS_BIN=1 || HAS_BIN=0
-[ -x "$(which python3)" ] && HAS_PY3=1 || HAS_PY3=0
-[ "$NODE_ENV" == production ] && IS_PROD=1 || IS_PROD=0
-
-if [ $HAS_BIN == 1 ] && { [ $IS_PROD == 1 ] || [ $HAS_PY3 == 0 ]; } ; then
-  $POSE_SEG_BIN $@
-else
-  $POSE_SEG_PY $@
-fi
+$POSE_SEG_PY $@
