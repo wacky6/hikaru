@@ -22,7 +22,7 @@
     "mongodb": "^3.1.10",
     "shuffle-array": "^1.0.1",
     "string-argv": "^0.3.0",
-    "ws": "^6.0.0",
+    "ws": "^6.2.4",
     "yargs": "^15.1.0"
   },
   "devDependencies": {
