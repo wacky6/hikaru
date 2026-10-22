@@ -5,7 +5,7 @@ from sklearn import linear_model
 from scipy.signal import medfilt
 from scipy.interpolate import interp1d
 from math import floor
-import scipy.ndimage.morphology as morphology
+from scipy.ndimage import binary_closing, binary_opening, binary_dilation
 from sys import exit
 import sys
 import os
@@ -118,7 +118,7 @@ def seg_pose(csvpath, dump):
     # score
     decision_eye = mode_eye * THRESHOLD_EYE
     decision_ear = mode_ear * THRESHOLD_EAR
-    decision_sld = mode_sld * THRESHOLD_SHOULDER,
+    decision_sld = mode_sld * THRESHOLD_SHOULDER
     decision_hip = (1-mode_hip_c) * THRESHOLD_HIP + mode_hip_c
     decision_knee = (1-mode_knee_c) * THRESHOLD_KNEE + mode_knee_c
 
@@ -145,9 +145,9 @@ def seg_pose(csvpath, dump):
     filter_struct = [True] * segment_frames
 
     decision = score > 0.8
-    decision = morphology.binary_closing(decision, filter_struct)
-    decision = morphology.binary_opening(decision, filter_struct)
-    decision = morphology.binary_dilation(decision, expand_struct)
+    decision = binary_closing(decision, filter_struct)
+    decision = binary_opening(decision, filter_struct)
+    decision = binary_dilation(decision, expand_struct)
 
     # scan through decision score, build segment list
     segments = []
@@ -240,8 +240,9 @@ def seg_pose(csvpath, dump):
                 )
                 ax[5].fill_between([start_t, end_t], 0, 1.5, color=[1, 0.6, 0.6])
 
-            labels = [sec_to_time_repr(t) for t in ax[5].get_xticks()]
-            ax[5].set_xticklabels(labels)
+            ticks = ax[5].get_xticks()
+            ax[5].set_xticks(ticks)
+            ax[5].set_xticklabels([sec_to_time_repr(t) for t in ticks])
             ax[5].tick_params(axis='x', length=8, width=2, colors='black')
             fig.tight_layout()
 
@@ -250,12 +251,12 @@ def seg_pose(csvpath, dump):
             else:
                 png_path = dump
 
-            fig.savefig(png_path, dpi=144, optimize=True, facecolor='w', format='png')
+            fig.savefig(png_path, dpi=144, facecolor='w', format='png')
         except:
             print(f'Fail to dump analysis diagram, error:', file=sys.stderr)
             print(traceback.format_exc(), file=sys.stderr)
             try:
-                trace_path = dump + '.png'
+                trace_path = dump if dump.endswith('.png') else dump + '.png'
                 with open(trace_path, 'w') as f:
                     print(f'Fail to dump analysis diagram, error:', file=f)
                     print(traceback.format_exc(), file=f)

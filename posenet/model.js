@@ -59,6 +59,10 @@ class LocalModelWeights {
 }
 
 async function localLoad(multiplier = 0.75) {
+    // Emscripten in @tensorflow/tfjs-backend-wasm 1.x attempts to call
+    // WebAssembly.instantiateStreaming(fetch(localFilePath)) when global fetch
+    // is defined (Node 18+), which rejects on local filesystem paths.
+    delete globalThis.fetch
     tfjs = require('@tensorflow/tfjs')
     require('@tensorflow/tfjs-backend-wasm')
     await tfjs.setBackend('wasm')

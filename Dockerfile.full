@@ -1,10 +1,17 @@
-FROM node:alpine
+FROM node:26-alpine
 LABEL maintainer="Jiewei Qian <qjw@wacky.one>"
 
+# Use OpenSSL's system CA store (--use-openssl-ca) so we can distrust the
+# eMudhra (emSign) root CAs following Google Chrome's decision to drop their
+# root CAs, whereas Node's built-in mitigation only drops intermediate CAs
+# (retaining emSign Root CA - G1 in Node's compiled-in bundle).
+# TODO: Revisit the need for NODE_OPTIONS="--use-openssl-ca" and the manual CA
+# removal below once Node's built-in CA store drops these root CAs.
 ENV HIKARU_DEFAULT_AMQP="amqp://rabbitmq/" \
     HIKARU_DEFAULT_MONGO="mongodb://mongo/hikaru" \
     TZ="Asia/Shanghai" \
-    NODE_ENV="production"
+    NODE_ENV="production" \
+    NODE_OPTIONS="--use-openssl-ca"
 
 USER root
 WORKDIR /root/
@@ -14,15 +21,22 @@ COPY package.json yarn.lock /hikaru/
 COPY uplink/package.json uplink/yarn.lock /hikaru/uplink/
 COPY posenet/checkpoints.js posenet/package.json posenet/yarn.lock posenet/pose-seg.py /hikaru/posenet/
 
-ARG BUILD_PKGS="build-base ffmpeg-dev git python3 cairo-dev pango-dev \
+ARG BUILD_PKGS="build-base ffmpeg-dev git py3-setuptools pkgconf pixman-dev giflib-dev cairo-dev pango-dev \
     tzdata libjpeg-turbo-dev pwgen libc-dev zlib-dev libffi-dev tar gzip"
-ARG RUNTIME_PKGS="curl ffmpeg cairo pango libjpeg-turbo \
+ARG RUNTIME_PKGS="ca-certificates curl ffmpeg yarn \
+    cairo pango libjpeg-turbo giflib \
     python3 py3-scipy py3-numpy py3-scikit-learn py3-matplotlib"
 
 RUN mkdir -p /root/hikaru/ && \
     : Install binary dependencies && \
-    apk add --no-cache \
-        ${BUILD_PKGS} ${RUNTIME_PKGS} && \
+    apk update && \
+    apk upgrade --no-cache && \
+    apk add --no-cache ${BUILD_PKGS} ${RUNTIME_PKGS} && \
+    : Distrust compromised eMudhra and cross-signed CA roots && \
+    sed -i -E 's|^mozilla/(emSign_.*\|Comodo_AAA_Services_root)\.crt|!&|' /etc/ca-certificates.conf && \
+    rm -f /usr/share/ca-certificates/mozilla/emSign_*.crt \
+          /usr/share/ca-certificates/mozilla/Comodo_AAA_Services_root.crt && \
+    update-ca-certificates --fresh && \
     : Setup Timezone && \
     cp /usr/share/zoneinfo/${TZ} /etc/localtime && \
     echo ${TZ} > /etc/timezone && \
