@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Stash .dockerignore
+        run: mv .dockerignore .dockerignore.stash
+
+      - name: Build container image
+        run: docker build --pull . -t hikaru-test -f Dockerfile.full
+
+      - name: Verify CA trust store
+        run: |
+          docker run --rm --entrypoint /bin/sh hikaru-test -c '
+            node -e "
+              const fs = require(\"fs\"), crypto = require(\"crypto\"), assert = require(\"assert\");
+              assert(process.env.NODE_OPTIONS && process.env.NODE_OPTIONS.includes(\"--use-openssl-ca\"), \"--use-openssl-ca not enabled\");
+              const bundle = fs.readFileSync(\"/etc/ssl/certs/ca-certificates.crt\", \"utf8\");
+              const pems = bundle.match(/-----BEGIN CERTIFICATE-----[\\s\\S]+?-----END CERTIFICATE-----/g) || [];
+              assert(pems.length > 0, \"Empty CA bundle\");
+              for (const pem of pems) {
+                const cert = new crypto.X509Certificate(pem);
+                if (/emSign|eMudhra|AAA Certificate Services/i.test(cert.subject + \" \" + cert.issuer)) {
+                  console.error(\"Compromised CA found:\", cert.subject);
+                  process.exit(1);
+                }
+              }
+              console.log(\"Verified\", pems.length, \"CA certificates: no eMudhra/emSign or AAA Certificate Services roots present.\");
+            "
+          '
+
+      - name: Testing built container
+        run: |
+          docker run --rm -w /hikaru/ --entrypoint /bin/sh hikaru-test -c 'cd /hikaru; yarn add tape --ignore-scripts && yarn test'
+
+      - name: Prepare for release build
+        run: mv .dockerignore.stash .dockerignore
+
+      - name: Build and publish release images
+        if: github.event_name == 'push'
+        env:
+          GHCR_USER: ${{ github.repository_owner }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./build-publish.sh

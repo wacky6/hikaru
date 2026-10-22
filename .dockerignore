@@ -11,7 +11,7 @@ posenet/.config
 memenet/
 uplink/node_modules
 .vscode
-.circleci
+.github
 
 # Test directories
 posenet/test
