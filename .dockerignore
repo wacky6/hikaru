@@ -4,7 +4,6 @@ node_modules
 *.log
 *.png
 posenet/mobilenet*
-posenet/build-tf
 posenet/libtensorflow.*
 posenet/ipynb
 posenet/node_modules
